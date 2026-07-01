@@ -1,0 +1,16 @@
+.gradle/
+.tooling/
+app/build/
+local.properties
+.env.local
+voice_keyboard_*.png
+window.xml
+.idea/
+*.iml
+*.jks
+*.keystore
+*.apk
+*.aab
+captures/
+.DS_Store
+Thumbs.db
