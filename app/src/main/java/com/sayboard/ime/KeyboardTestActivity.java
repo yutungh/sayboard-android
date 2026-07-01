@@ -1,4 +1,4 @@
-package com.voicekeyboard.ime;
+package com.sayboard.ime;
 
 import android.app.Activity;
 import android.graphics.Color;

@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a problem with the keyboard.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: Samsung S26 Ultra, Pixel 9, emulator, etc.
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version
+      placeholder: Android 15, Android 16, etc.
+  - type: dropdown
+    id: transcription-provider
+    attributes:
+      label: Transcription provider
+      options:
+        - OpenAI audio API
+        - Android device speech
+        - Not applicable
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open...
+        2. Tap...
+        3. See...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Do not include API keys, private dictated text, passwords, or sensitive screenshots.

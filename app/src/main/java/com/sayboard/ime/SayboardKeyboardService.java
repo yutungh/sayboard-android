@@ -1,4 +1,4 @@
-package com.voicekeyboard.ime;
+package com.sayboard.ime;
 
 import android.Manifest;
 import android.content.Context;
@@ -49,7 +49,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class VoiceKeyboardService extends InputMethodService {
+public class SayboardKeyboardService extends InputMethodService {
     private static final int KEY_HEIGHT_DP = 48;
     private static final int KEY_VISUAL_GAP_DP = 3;
     private static final int SPELL_CHECK_DELAY_MS = 120;
@@ -804,12 +804,29 @@ public class VoiceKeyboardService extends InputMethodService {
             return false;
         }
         int variation = inputType & InputType.TYPE_MASK_VARIATION;
-        return variation != InputType.TYPE_TEXT_VARIATION_PASSWORD
-                && variation != InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                && variation != InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
-                && variation != InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-                && variation != InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
-                && variation != InputType.TYPE_TEXT_VARIATION_URI;
+        return !isSensitiveTextVariation(variation);
+    }
+
+    private boolean shouldAllowVoiceCapture() {
+        EditorInfo info = getCurrentInputEditorInfo();
+        if (info == null) {
+            return true;
+        }
+        int inputType = info.inputType;
+        if ((inputType & InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT) {
+            return false;
+        }
+        int variation = inputType & InputType.TYPE_MASK_VARIATION;
+        return !isSensitiveTextVariation(variation);
+    }
+
+    private boolean isSensitiveTextVariation(int variation) {
+        return variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
+                || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                || variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                || variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+                || variation == InputType.TYPE_TEXT_VARIATION_URI;
     }
 
     private String currentWordBeforeCursor() {
@@ -961,6 +978,10 @@ public class VoiceKeyboardService extends InputMethodService {
         if (processing) {
             return;
         }
+        if (!recording && !shouldAllowVoiceCapture()) {
+            setStatus("Voice disabled in this field");
+            return;
+        }
         String provider = Prefs.transcriptionProvider(this);
         if (Prefs.PROVIDER_ANDROID.equals(provider)) {
             toggleAndroidRecognition();
@@ -981,7 +1002,7 @@ public class VoiceKeyboardService extends InputMethodService {
         }
         try {
             selectedPreset = Prefs.activePreset(this);
-            currentAudioFile = File.createTempFile("voice-keyboard-", ".m4a", getCacheDir());
+            currentAudioFile = File.createTempFile("sayboard-", ".m4a", getCacheDir());
             recorder = createRecorder();
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
@@ -1370,7 +1391,7 @@ public class VoiceKeyboardService extends InputMethodService {
             this.onDanger = onDanger;
         }
 
-        static Palette from(VoiceKeyboardService service) {
+        static Palette from(SayboardKeyboardService service) {
             boolean night = (service.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
             int accent = service.resolveThemeColor(android.R.attr.colorAccent, night ? Color.rgb(100, 181, 246) : Color.rgb(25, 103, 210));

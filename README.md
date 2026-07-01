@@ -1,12 +1,18 @@
-# Voice Keyboard for Android
+# Sayboard
 
-Open-source Android voice keyboard starter kit for people who want a Typeless-style mobile dictation workflow.
+Open-source Android voice keyboard for people who want a Typeless-style mobile dictation workflow.
 
 Record a voice note from the keyboard, transcribe it, optionally clean it with an LLM prompt, and insert the final text into any app. This is built as a native Android IME, so it works anywhere a normal keyboard works.
 
 > Not affiliated with Typeless, Apple, Google, Anthropic, or OpenAI. "Typeless-style" is used only to describe the product category: voice-first mobile typing with AI cleanup.
 
-![Voice Keyboard letters layout](docs/keyboard-letters.png)
+![Sayboard letters layout](docs/keyboard-letters.png)
+
+## Try It
+
+Download the latest prototype APK from the [GitHub Releases page](https://github.com/yutungh/sayboard-android/releases/latest).
+
+This is a debug-signed prototype build for sideloading and testing. For production use, build and sign your own release APK.
 
 ## Why This Exists
 
@@ -18,7 +24,7 @@ Most mobile voice typing tools either insert raw dictation immediately or live i
 - insert the final result into the active text field,
 - let users bring their own API key and model choices.
 
-Good search terms for this project: Android voice keyboard, Typeless alternative, AI dictation keyboard, OpenAI transcription keyboard, voice-to-text IME, prompt-based dictation cleanup.
+Good search terms for this project: Android voice keyboard, Sayboard, Typeless alternative, AI dictation keyboard, OpenAI transcription keyboard, voice-to-text IME, prompt-based dictation cleanup.
 
 ## Features
 
@@ -80,6 +86,8 @@ app/build/outputs/apk/debug/app-debug.apk
 
 Enable Developer Options and USB Debugging on your Android phone. On Samsung devices, you may also need to disable Auto Blocker for sideloading.
 
+If you downloaded an APK from Releases, install that APK. If you built from source, install the generated debug APK:
+
 Install:
 
 ```powershell
@@ -88,11 +96,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Then:
 
-1. Open **Voice Keyboard**.
+1. Open **Sayboard**.
 2. Grant microphone permission.
 3. Add your OpenAI API key if using OpenAI transcription/cleanup.
 4. Choose your transcription and transform models.
-5. Open Android keyboard settings and enable **Voice Keyboard**.
+5. Open Android keyboard settings and enable **Sayboard**.
 6. Choose it from the keyboard picker.
 
 ## Recommended Model Setup
@@ -125,7 +133,17 @@ You can edit every preset prompt inside the app settings. This makes the project
 
 This keyboard can read what you type and can record microphone audio while active, because that is how Android keyboards and dictation tools work.
 
-For personal development, the current local-key setup is convenient. For public release, you should:
+Read [PRIVACY.md](PRIVACY.md) before using or modifying this app.
+
+Current privacy model:
+
+- The app does not include a bundled API key.
+- Users bring their own OpenAI API key.
+- API keys are saved locally on the device in app preferences.
+- When OpenAI transcription is enabled, recorded audio is sent to OpenAI after recording stops.
+- When transcript cleanup is enabled, transcript text is sent to the configured OpenAI transform model.
+
+For a production release, you should:
 
 - use encrypted preferences or Android Keystore for API keys,
 - disable voice/network features in password, OTP, payment, and other sensitive fields,
@@ -143,6 +161,10 @@ For personal development, the current local-key setup is convenient. For public 
 - Better tablet/foldable layouts.
 - Optional local transcription model support.
 - Release builds and signing instructions.
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

@@ -1,4 +1,4 @@
-package com.voicekeyboard.ime;
+package com.sayboard.ime;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -32,7 +32,7 @@ final class Prefs {
             "Email"
     };
 
-    private static final String FILE = "voice_keyboard_settings";
+    private static final String FILE = "sayboard_settings";
     private static final String KEY_OPENAI_API_KEY = "openai_api_key";
     private static final String KEY_TRANSCRIPTION_PROVIDER = "transcription_provider";
     private static final String KEY_TRANSCRIPTION_MODEL = "transcription_model";
