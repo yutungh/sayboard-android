@@ -1,4 +1,4 @@
-package com.sayboard.ime;
+package com.voiceflowkeyboard.ime;
 
 import android.app.Activity;
 import android.graphics.Color;

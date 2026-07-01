@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace "com.sayboard.ime"
+    namespace "com.voiceflowkeyboard.ime"
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.sayboard.ime"
+        applicationId "com.voiceflowkeyboard.ime"
         minSdk 26
         targetSdk 35
         versionCode 1

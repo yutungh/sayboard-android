@@ -1,4 +1,4 @@
-package com.sayboard.ime;
+package com.voiceflowkeyboard.ime;
 
 import android.Manifest;
 import android.app.Activity;
@@ -43,7 +43,7 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestAudioPermission();
-        setTitle("Sayboard");
+        setTitle("VoiceFlow Keyboard");
         setContentView(buildContent());
     }
 
@@ -55,7 +55,7 @@ public class SettingsActivity extends Activity {
         root.setBackgroundColor(Color.rgb(248, 249, 250));
         scroll.addView(root);
 
-        TextView title = text("Sayboard", 24, true);
+        TextView title = text("VoiceFlow Keyboard", 24, true);
         root.addView(title);
         root.addView(text("Configure transcription, cleanup prompts, and keyboard activation.", 14, false));
 
@@ -134,7 +134,7 @@ public class SettingsActivity extends Activity {
                 Prefs.PRESET_VALUES[activePresetSpinner.getSelectedItemPosition()],
                 promptTexts()
         );
-        Toast.makeText(this, "Sayboard settings saved", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "VoiceFlow Keyboard settings saved", Toast.LENGTH_SHORT).show();
     }
 
     private String[] promptTexts() {

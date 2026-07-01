@@ -1,4 +1,4 @@
-package com.sayboard.ime;
+package com.voiceflowkeyboard.ime;
 
 import android.Manifest;
 import android.content.Context;
@@ -49,7 +49,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class SayboardKeyboardService extends InputMethodService {
+public class VoiceFlowKeyboardService extends InputMethodService {
     private static final int KEY_HEIGHT_DP = 48;
     private static final int KEY_VISUAL_GAP_DP = 3;
     private static final int SPELL_CHECK_DELAY_MS = 120;
@@ -1002,7 +1002,7 @@ public class SayboardKeyboardService extends InputMethodService {
         }
         try {
             selectedPreset = Prefs.activePreset(this);
-            currentAudioFile = File.createTempFile("sayboard-", ".m4a", getCacheDir());
+            currentAudioFile = File.createTempFile("voiceflow-keyboard-", ".m4a", getCacheDir());
             recorder = createRecorder();
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
@@ -1391,7 +1391,7 @@ public class SayboardKeyboardService extends InputMethodService {
             this.onDanger = onDanger;
         }
 
-        static Palette from(SayboardKeyboardService service) {
+        static Palette from(VoiceFlowKeyboardService service) {
             boolean night = (service.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
             int accent = service.resolveThemeColor(android.R.attr.colorAccent, night ? Color.rgb(100, 181, 246) : Color.rgb(25, 103, 210));

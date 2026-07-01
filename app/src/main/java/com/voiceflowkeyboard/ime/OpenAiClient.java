@@ -1,4 +1,4 @@
-package com.sayboard.ime;
+package com.voiceflowkeyboard.ime;
 
 import android.content.Context;
 
@@ -40,7 +40,7 @@ final class OpenAiClient {
     static String transcribe(Context context, File audioFile) throws Exception {
         String apiKey = requiredApiKey(context);
         String model = nonEmpty(Prefs.transcriptionModel(context), "gpt-4o-transcribe");
-        String boundary = "SayboardBoundary" + System.currentTimeMillis();
+        String boundary = "VoiceFlowKeyboardBoundary" + System.currentTimeMillis();
 
         HttpURLConnection connection = (HttpURLConnection) new URL(TRANSCRIPTIONS_URL).openConnection();
         connection.setRequestMethod("POST");
@@ -52,7 +52,7 @@ final class OpenAiClient {
 
         try (OutputStream out = connection.getOutputStream()) {
             writePart(out, boundary, "model", model);
-            writeFilePart(out, boundary, "file", audioFile, "sayboard.m4a", "audio/mp4");
+            writeFilePart(out, boundary, "file", audioFile, "voiceflow-keyboard.m4a", "audio/mp4");
             out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         }
 
@@ -157,7 +157,7 @@ final class OpenAiClient {
     private static String requiredApiKey(Context context) {
         String apiKey = Prefs.openAiApiKey(context);
         if (apiKey == null || apiKey.trim().isEmpty()) {
-            throw new IllegalStateException("Add your OpenAI API key in Sayboard settings.");
+            throw new IllegalStateException("Add your OpenAI API key in VoiceFlow Keyboard settings.");
         }
         return apiKey.trim();
     }

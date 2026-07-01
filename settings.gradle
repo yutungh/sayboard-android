@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Sayboard"
+rootProject.name = "VoiceFlow Keyboard"
 include ":app"

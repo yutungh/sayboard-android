@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Sayboard.
+Thanks for helping improve VoiceFlow Keyboard.
 
 This project is intended to be a practical open-source base for Android voice dictation keyboards. Keep changes understandable, privacy-conscious, and useful for people who want to build or test the app themselves.
 

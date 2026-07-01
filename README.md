@@ -1,16 +1,16 @@
-# Sayboard
+# VoiceFlow Keyboard
 
 Open-source Android voice keyboard for people who want a Typeless-style mobile dictation workflow.
 
 Record a voice note from the keyboard, transcribe it, optionally clean it with an LLM prompt, and insert the final text into any app. This is built as a native Android IME, so it works anywhere a normal keyboard works.
 
-> Not affiliated with Typeless, Apple, Google, Anthropic, or OpenAI. "Typeless-style" is used only to describe the product category: voice-first mobile typing with AI cleanup.
+> Not affiliated with Typeless, Voiceflow, Apple, Google, Anthropic, or OpenAI. "Typeless-style" is used only to describe the product category: voice-first mobile typing with AI cleanup.
 
-![Sayboard letters layout](docs/keyboard-letters.png)
+![VoiceFlow Keyboard letters layout](docs/keyboard-letters.png)
 
 ## Try It
 
-Download the latest prototype APK from the [GitHub Releases page](https://github.com/yutungh/sayboard-android/releases/latest).
+Download the latest prototype APK from the [GitHub Releases page](https://github.com/yutungh/voiceflow-keyboard-android/releases/latest).
 
 This is a debug-signed prototype build for sideloading and testing. For production use, build and sign your own release APK.
 
@@ -24,7 +24,7 @@ Most mobile voice typing tools either insert raw dictation immediately or live i
 - insert the final result into the active text field,
 - let users bring their own API key and model choices.
 
-Good search terms for this project: Android voice keyboard, Sayboard, Typeless alternative, AI dictation keyboard, OpenAI transcription keyboard, voice-to-text IME, prompt-based dictation cleanup.
+Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, Typeless alternative, AI dictation keyboard, OpenAI transcription keyboard, voice-to-text IME, prompt-based dictation cleanup.
 
 ## Features
 
@@ -96,11 +96,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Then:
 
-1. Open **Sayboard**.
+1. Open **VoiceFlow Keyboard**.
 2. Grant microphone permission.
 3. Add your OpenAI API key if using OpenAI transcription/cleanup.
 4. Choose your transcription and transform models.
-5. Open Android keyboard settings and enable **Sayboard**.
+5. Open Android keyboard settings and enable **VoiceFlow Keyboard**.
 6. Choose it from the keyboard picker.
 
 ## Recommended Model Setup
