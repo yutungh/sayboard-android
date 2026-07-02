@@ -306,9 +306,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private void showRecordingChips() {
         chipStrip.removeAllViews();
         chipStrip.setVisibility(View.VISIBLE);
-        for (int i = 0; i < Prefs.PRESET_VALUES.length; i++) {
-            final String preset = Prefs.PRESET_VALUES[i];
-            TextView chip = chip(Prefs.PRESET_LABELS[i], v -> {
+        for (String value : Prefs.SELECTABLE_PRESET_VALUES) {
+            final String preset = value;
+            TextView chip = chip(Prefs.labelForPreset(this, preset), v -> {
                 selectedPreset = preset;
                 Prefs.setActivePreset(this, selectedPreset);
                 if (presetButton != null) {
@@ -333,8 +333,8 @@ public class VoiceFlowKeyboardService extends InputMethodService {
 
     private void showPresetMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        for (int i = 0; i < Prefs.PRESET_VALUES.length; i++) {
-            menu.getMenu().add(0, i, i, Prefs.PRESET_LABELS[i]);
+        for (int i = 0; i < Prefs.SELECTABLE_PRESET_VALUES.length; i++) {
+            menu.getMenu().add(0, i, i, Prefs.labelForPreset(this, Prefs.SELECTABLE_PRESET_VALUES[i]));
         }
         menu.getMenu().add(1, 100, 100, "Settings");
         menu.setOnMenuItemClickListener(item -> {
@@ -344,8 +344,8 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                 return true;
             }
             int index = item.getItemId();
-            if (index >= 0 && index < Prefs.PRESET_VALUES.length) {
-                selectedPreset = Prefs.PRESET_VALUES[index];
+            if (index >= 0 && index < Prefs.SELECTABLE_PRESET_VALUES.length) {
+                selectedPreset = Prefs.SELECTABLE_PRESET_VALUES[index];
                 Prefs.setActivePreset(this, selectedPreset);
                 if (presetButton != null) {
                     presetButton.setText(presetDropdownText());
@@ -1169,8 +1169,8 @@ public class VoiceFlowKeyboardService extends InputMethodService {
 
     private void cyclePreset(int direction) {
         int index = presetIndex(selectedPreset);
-        int next = (index + direction + Prefs.PRESET_VALUES.length) % Prefs.PRESET_VALUES.length;
-        selectedPreset = Prefs.PRESET_VALUES[next];
+        int next = (index + direction + Prefs.SELECTABLE_PRESET_VALUES.length) % Prefs.SELECTABLE_PRESET_VALUES.length;
+        selectedPreset = Prefs.SELECTABLE_PRESET_VALUES[next];
         Prefs.setActivePreset(this, selectedPreset);
         if (presetButton != null) {
             presetButton.setText(presetDropdownText());
@@ -1180,12 +1180,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     }
 
     private int presetIndex(String preset) {
-        for (int i = 0; i < Prefs.PRESET_VALUES.length; i++) {
-            if (Prefs.PRESET_VALUES[i].equals(preset)) {
-                return i;
-            }
-        }
-        return 1;
+        return Prefs.presetIndex(Prefs.SELECTABLE_PRESET_VALUES, preset);
     }
 
     private String selectedPresetLabel() {
@@ -1193,8 +1188,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     }
 
     private String labelForPreset(String preset) {
-        int index = presetIndex(preset);
-        return Prefs.PRESET_LABELS[index];
+        return Prefs.labelForPreset(this, preset);
     }
 
     private void stopRecorderSilently() {

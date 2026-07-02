@@ -36,7 +36,8 @@ public class SettingsActivity extends Activity {
     private EditText transcriptionModelInput;
     private EditText transformModelInput;
     private Spinner activePresetSpinner;
-    private final EditText[] promptInputs = new EditText[Prefs.PRESET_VALUES.length];
+    private final EditText[] promptInputs = new EditText[Prefs.EDITABLE_PRESET_VALUES.length];
+    private final EditText[] customLabelInputs = new EditText[Prefs.CUSTOM_PRESET_VALUES.length];
     private CheckBox transformEnabledInput;
 
     @Override
@@ -87,18 +88,33 @@ public class SettingsActivity extends Activity {
         root.addView(transformEnabledInput);
 
         activePresetSpinner = new Spinner(this);
-        activePresetSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Prefs.PRESET_LABELS));
-        activePresetSpinner.setSelection(presetIndex(Prefs.activePreset(this)));
-        root.addView(label("Default transform preset"));
+        activePresetSpinner.setAdapter(new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                Prefs.labelsForPresets(this, Prefs.SELECTABLE_PRESET_VALUES)
+        ));
+        activePresetSpinner.setSelection(Prefs.presetIndex(Prefs.SELECTABLE_PRESET_VALUES, Prefs.activePreset(this)));
+        root.addView(label("Default transform profile"));
         root.addView(activePresetSpinner);
 
-        for (int i = 0; i < Prefs.PRESET_VALUES.length; i++) {
-            EditText promptInput = input("Prompt", false, Prefs.PRESET_RAW.equals(Prefs.PRESET_VALUES[i]) ? 1 : 5);
-            promptInput.setText(Prefs.promptForPreset(this, Prefs.PRESET_VALUES[i]));
+        root.addView(text("Use Casual for most dictation. Use Professional when you want more polish. Rename Custom profiles for your own workflows.", 13, false));
+
+        for (int i = 0; i < Prefs.EDITABLE_PRESET_VALUES.length; i++) {
+            String preset = Prefs.EDITABLE_PRESET_VALUES[i];
+            if (Prefs.isCustomPreset(preset)) {
+                int customIndex = Prefs.customPresetIndex(preset);
+                EditText labelInput = input(Prefs.defaultLabelForPreset(preset), false, 1);
+                labelInput.setText(Prefs.labelForPreset(this, preset));
+                customLabelInputs[customIndex] = labelInput;
+                root.addView(label(Prefs.defaultLabelForPreset(preset) + " name"));
+                root.addView(labelInput);
+            }
+
+            EditText promptInput = input("Prompt", false, 8);
+            promptInput.setText(Prefs.promptForPreset(this, preset));
             promptInput.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
-            promptInput.setEnabled(!Prefs.PRESET_RAW.equals(Prefs.PRESET_VALUES[i]));
             promptInputs[i] = promptInput;
-            root.addView(label(Prefs.PRESET_LABELS[i] + " prompt"));
+            root.addView(label(Prefs.labelForPreset(this, preset) + " prompt"));
             root.addView(promptInput);
         }
 
@@ -131,8 +147,9 @@ public class SettingsActivity extends Activity {
                 transcriptionModelInput.getText().toString(),
                 transformModelInput.getText().toString(),
                 transformEnabledInput.isChecked(),
-                Prefs.PRESET_VALUES[activePresetSpinner.getSelectedItemPosition()],
-                promptTexts()
+                Prefs.SELECTABLE_PRESET_VALUES[activePresetSpinner.getSelectedItemPosition()],
+                promptTexts(),
+                customLabelTexts()
         );
         Toast.makeText(this, "VoiceFlow Keyboard settings saved", Toast.LENGTH_SHORT).show();
     }
@@ -143,6 +160,14 @@ public class SettingsActivity extends Activity {
             prompts[i] = promptInputs[i].getText().toString();
         }
         return prompts;
+    }
+
+    private String[] customLabelTexts() {
+        String[] labels = new String[customLabelInputs.length];
+        for (int i = 0; i < customLabelInputs.length; i++) {
+            labels[i] = customLabelInputs[i] == null ? "" : customLabelInputs[i].getText().toString();
+        }
+        return labels;
     }
 
     private void requestAudioPermission() {
@@ -159,15 +184,6 @@ public class SettingsActivity extends Activity {
             }
         }
         return 0;
-    }
-
-    private int presetIndex(String preset) {
-        for (int i = 0; i < Prefs.PRESET_VALUES.length; i++) {
-            if (Prefs.PRESET_VALUES[i].equals(preset)) {
-                return i;
-            }
-        }
-        return 1;
     }
 
     private TextView label(String value) {

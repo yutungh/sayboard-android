@@ -36,7 +36,8 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Optional Android device speech recognition fallback.
 - Optional transcript cleanup via OpenAI Responses API.
 - Editable API key, transcription model, transform model, and cleanup prompts.
-- Presets: Raw, Clean, Casual, Professional, Bullets, Email.
+- Transform profiles: Casual, Professional, and three editable custom profiles.
+- Casual and Professional automatically use bullets or numbering when the transcript is clearly a list, steps, tasks, instructions, options, or grouped items.
 - Low-latency GPT-5 transform settings with safe fallback retry.
 - Minimal autocorrect layer using Android spell checker suggestions when available.
 - Custom phrase replacement example: `Cloud Code` -> `Claude Code`.
@@ -117,16 +118,25 @@ The transform request uses low-latency options for GPT-5-style cleanup tasks:
 - prompt caching key/retention
 - fallback retry without optional latency fields if a selected model rejects them
 
-## Prompt Presets
+## Transform Profiles
 
-The most useful preset is usually **Casual**. It lightly cleans raw speech-to-text while preserving wording, tone, intent, hedging, and order.
+The default profile is **Casual**. It lightly cleans raw speech-to-text while preserving wording, tone, intent, hedging, and order. It is designed for rambling thoughts, quick replies, notes, and normal dictation.
 
-You can edit every preset prompt inside the app settings. This makes the project useful as a base for:
+**Professional** rewrites the transcript into clearer, more polished professional text while preserving meaning and factual content.
+
+Both built-in profiles can format content as bullets or numbered steps when that structure naturally fits. For example, grocery lists, task lists, instructions, recipes, options, and step-by-step workflows do not need a separate Bullets mode.
+
+The app also includes three editable custom profiles. Each custom profile has:
+
+- editable display name,
+- editable prompt,
+- the same one-tap recording flow as the built-in profiles.
+
+This makes the project useful as a base for:
 
 - personal dictation cleanup,
 - professional message drafting,
-- email rewriting,
-- bullet-point conversion,
+- task and instruction formatting,
 - domain-specific terminology cleanup.
 
 ## Privacy Notes
