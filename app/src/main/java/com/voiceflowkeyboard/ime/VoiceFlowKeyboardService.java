@@ -254,12 +254,39 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private LinearLayout letterMiddleRow() {
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.HORIZONTAL);
-        outer.setPadding(dp(24), 0, dp(24), 0);
+        outer.addView(edgeDeadZone(10));
+        outer.addView(edgeHitZone("a", 14));
         outer.addView(keyRow("asdfghjkl"), new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
         ));
+        outer.addView(edgeHitZone("l", 14));
+        outer.addView(edgeDeadZone(10));
         return outer;
+    }
+
+    private View edgeDeadZone(int widthDp) {
+        View view = new View(this);
+        view.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(widthDp),
+                dp(KEY_HEIGHT_DP)
+        ));
+        return view;
+    }
+
+    private View edgeHitZone(String key, int widthDp) {
+        View view = new View(this);
+        view.setClickable(true);
+        view.setOnClickListener(v -> {
+            haptic(v);
+            commitKey(key);
+        });
+        view.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(widthDp),
+                dp(KEY_HEIGHT_DP)
+        ));
+        return view;
     }
 
     private LinearLayout keyRow(String chars) {
