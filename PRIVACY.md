@@ -14,24 +14,29 @@ With microphone permission, the app can record audio while the microphone button
 
 The app does not send typed keystrokes to a server for normal keyboard typing.
 
-When OpenAI transcription is selected:
+When a cloud transcription provider is selected, such as OpenAI, Grok / xAI, or Deepgram:
 
 - audio is recorded locally while the microphone is active,
-- after recording stops, the audio file is sent to OpenAI's audio transcription API,
+- after recording stops, the audio file is sent to the selected provider's transcription API,
 - the returned transcript is used inside the keyboard.
 
 When transcript cleanup is enabled:
 
-- the transcript text is sent to OpenAI's Responses API,
+- the transcript text is sent to the selected transform provider, such as OpenAI, Grok / xAI, or Claude / Anthropic,
 - the returned cleaned text is inserted into the active text field.
 
-If Android device speech recognition is selected instead of OpenAI transcription, speech handling depends on the Android speech recognizer configured on the user's device.
+When offline Vosk transcription is selected:
+
+- the app downloads a local speech model on first use,
+- audio is recorded locally while the microphone is active,
+- transcription runs on the device after recording stops,
+- transcript cleanup may still send text to a cloud transform provider if cleanup is enabled.
 
 ## API Keys
 
-The app does not include a bundled OpenAI API key.
+The app does not include bundled provider API keys.
 
-Users enter their own API key in the app settings. In the current prototype, the key is stored locally in Android app preferences. This is convenient for development but is not the strongest available storage option.
+Users enter their own API keys in the app settings. In the current prototype, keys are stored locally in Android app preferences. This is convenient for development but is not the strongest available storage option.
 
 For a production app, use encrypted preferences or Android Keystore.
 
@@ -39,7 +44,9 @@ For a production app, use encrypted preferences or Android Keystore.
 
 Temporary audio files are created in the app cache while processing a recording. The app attempts to delete each temporary audio file after processing.
 
-Settings such as provider, model names, selected preset, prompts, and API key are stored locally on the device.
+Offline speech models are stored locally in the app's private files directory.
+
+Settings such as providers, model names, selected preset, prompts, and API keys are stored locally on the device.
 
 ## What This Project Does Not Do
 

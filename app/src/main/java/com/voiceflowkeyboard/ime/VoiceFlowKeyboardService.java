@@ -10,14 +10,12 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
 import android.inputmethodservice.InputMethodService;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -39,6 +37,7 @@ import android.widget.PopupMenu;
 import android.widget.TextView;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -74,8 +73,11 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private long deleteHoldStartMs;
     private String selectedPreset;
     private MediaRecorder recorder;
+    private AudioRecord offlineRecorder;
+    private Thread offlineRecordThread;
+    private volatile boolean offlineRecordLoop;
     private File currentAudioFile;
-    private SpeechRecognizer speechRecognizer;
+    private File currentPcmFile;
     private SpellCheckerSession spellCheckerSession;
     private Runnable deleteRepeatRunnable;
     private Runnable statusSpinnerRunnable;
@@ -108,7 +110,6 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     @Override
     public void onDestroy() {
         stopRecorderSilently();
-        destroySpeechRecognizer();
         destroySpellChecker();
         executor.shutdownNow();
         super.onDestroy();
@@ -1007,16 +1008,16 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             return;
         }
         String provider = Prefs.transcriptionProvider(this);
-        if (Prefs.PROVIDER_ANDROID.equals(provider)) {
-            toggleAndroidRecognition();
+        if (Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)) {
+            toggleOfflineRecording();
         } else {
-            toggleOpenAiRecording();
+            toggleCloudRecording();
         }
     }
 
-    private void toggleOpenAiRecording() {
+    private void toggleCloudRecording() {
         if (recording) {
-            stopOpenAiRecordingAndTranscribe();
+            stopCloudRecordingAndTranscribe();
             return;
         }
         if (!hasAudioPermission()) {
@@ -1054,9 +1055,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         return new MediaRecorder();
     }
 
-    private void stopOpenAiRecordingAndTranscribe() {
+    private void stopCloudRecordingAndTranscribe() {
         File audio = currentAudioFile;
-        stopRecorderOnly();
+        stopCloudRecorderOnly();
         if (audio == null || !audio.exists() || audio.length() == 0) {
             finishProcessingState("No audio captured.");
             return;
@@ -1069,13 +1070,13 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         String presetForThisRecording = selectedPreset;
         executor.execute(() -> {
             try {
-                String transcript = OpenAiClient.transcribe(this, audio);
+                String transcript = TranscriptionClient.transcribe(this, audio);
                 String finalText = transcript;
                 String finalStatus = "Inserted";
                 if (shouldTransform(presetForThisRecording)) {
                     postStatusSpinner("Formatting: " + labelForPreset(presetForThisRecording));
                     try {
-                        finalText = OpenAiClient.transform(this, transcript, presetForThisRecording);
+                        finalText = TransformClient.transform(this, transcript, presetForThisRecording);
                     } catch (Exception transformError) {
                         finalStatus = "Inserted raw";
                     }
@@ -1100,11 +1101,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         return Prefs.enableTransform(this) && !Prefs.PRESET_RAW.equals(preset);
     }
 
-    private void toggleAndroidRecognition() {
+    private void toggleOfflineRecording() {
         if (recording) {
-            destroySpeechRecognizer();
-            recording = false;
-            finishProcessingState("Stopped");
+            stopOfflineRecordingAndTranscribe();
             return;
         }
         if (!hasAudioPermission()) {
@@ -1112,82 +1111,130 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             openSettings();
             return;
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            setStatus("Android speech recognition is not available on this device.");
+        if (!OfflineVoskClient.isModelReady(this)) {
+            prepareOfflineModel();
             return;
         }
-        selectedPreset = Prefs.activePreset(this);
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
-        speechRecognizer.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(Bundle params) {
-                setStatus("Listening: " + selectedPresetLabel());
-            }
-            @Override public void onBeginningOfSpeech() {
-                setStatus("Listening: " + selectedPresetLabel());
-            }
-            @Override public void onRmsChanged(float rmsdB) {
-            }
-            @Override public void onBufferReceived(byte[] buffer) {
-            }
-            @Override public void onEndOfSpeech() {
-                setStatus("Processing...");
-            }
-            @Override public void onError(int error) {
-                recording = false;
-                destroySpeechRecognizer();
-                finishProcessingState("Speech recognition error " + error);
-            }
-            @Override public void onResults(Bundle results) {
-                handleAndroidSpeechResults(results);
-            }
-            @Override public void onPartialResults(Bundle partialResults) {
-            }
-            @Override public void onEvent(int eventType, Bundle params) {
-            }
-        });
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-        speechRecognizer.startListening(intent);
-        recording = true;
-        setMicVisual(true, true);
-        setKeyboardLocked(true);
-        showRecordingChips();
+        startOfflineRecordingNow();
     }
 
-    private void handleAndroidSpeechResults(Bundle results) {
-        recording = false;
+    private void prepareOfflineModel() {
         processing = true;
+        setKeyboardLocked(true);
         micButton.setEnabled(false);
         setMicVisual(true, false);
-        ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        destroySpeechRecognizer();
-        if (matches == null || matches.isEmpty()) {
-            finishProcessingState("No speech recognized");
-            return;
-        }
-        String transcript = matches.get(0);
-        String presetForThisRecording = selectedPreset;
-        if (!shouldTransform(presetForThisRecording)) {
-            insertVoiceText(transcript);
-            finishProcessingState("Inserted");
-            return;
-        }
-        startStatusSpinner("Formatting: " + labelForPreset(presetForThisRecording));
+        startStatusSpinner("Downloading offline model");
         executor.execute(() -> {
-            String result = transcript;
-            String status = "Inserted";
             try {
-                result = OpenAiClient.transform(this, transcript, presetForThisRecording);
-            } catch (Exception transformError) {
-                status = "Inserted raw";
+                OfflineVoskClient.ensureModel(this);
+                mainHandler.post(() -> finishProcessingState("Offline model ready. Tap mic to record."));
+            } catch (Exception e) {
+                mainHandler.post(() -> finishProcessingState("Offline setup failed: " + concise(e)));
             }
-            String finalResult = result;
-            String finalStatus = status;
-            mainHandler.post(() -> {
-                insertVoiceText(finalResult);
-                finishProcessingState(finalStatus);
-            });
+        });
+    }
+
+    private void startOfflineRecordingNow() {
+        int minBuffer = AudioRecord.getMinBufferSize(
+                OfflineVoskClient.SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+        );
+        if (minBuffer <= 0) {
+            setStatus("Offline recorder unavailable.");
+            return;
+        }
+        int bufferSize = Math.max(minBuffer, OfflineVoskClient.SAMPLE_RATE * 2);
+        selectedPreset = Prefs.activePreset(this);
+        try {
+            currentPcmFile = File.createTempFile("voiceflow-keyboard-", ".pcm", getCacheDir());
+            offlineRecorder = new AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    OfflineVoskClient.SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+            );
+            if (offlineRecorder.getState() != AudioRecord.STATE_INITIALIZED) {
+                stopOfflineRecorderOnly();
+                setStatus("Offline recorder failed to initialize.");
+                return;
+            }
+            offlineRecordLoop = true;
+            offlineRecorder.startRecording();
+            File target = currentPcmFile;
+            AudioRecord activeRecorder = offlineRecorder;
+            offlineRecordThread = new Thread(
+                    () -> writeOfflinePcm(activeRecorder, target, bufferSize),
+                    "VoiceFlowOfflineRecorder"
+            );
+            offlineRecordThread.start();
+            recording = true;
+            setMicVisual(true, true);
+            setKeyboardLocked(true);
+            showRecordingChips();
+            setStatus("Recording offline: " + selectedPresetLabel());
+        } catch (Exception e) {
+            stopOfflineRecorderOnly();
+            setStatus("Offline recording failed: " + concise(e));
+        }
+    }
+
+    private void writeOfflinePcm(AudioRecord activeRecorder, File target, int bufferSize) {
+        byte[] buffer = new byte[bufferSize];
+        try (FileOutputStream out = new FileOutputStream(target)) {
+            while (offlineRecordLoop) {
+                int read = activeRecorder.read(buffer, 0, buffer.length);
+                if (read > 0) {
+                    out.write(buffer, 0, read);
+                }
+            }
+        } catch (Exception e) {
+            if (offlineRecordLoop) {
+                postStatus("Offline recording interrupted.");
+            }
+        }
+    }
+
+    private void stopOfflineRecordingAndTranscribe() {
+        File pcm = currentPcmFile;
+        stopOfflineRecorderOnly();
+        if (pcm == null || !pcm.exists() || pcm.length() == 0) {
+            finishProcessingState("No audio captured.");
+            return;
+        }
+        processing = true;
+        setKeyboardLocked(true);
+        micButton.setEnabled(false);
+        setMicVisual(true, false);
+        startStatusSpinner("Transcribing offline");
+        String presetForThisRecording = selectedPreset;
+        executor.execute(() -> {
+            try {
+                String transcript = OfflineVoskClient.transcribePcm(this, pcm);
+                String finalText = transcript;
+                String finalStatus = "Inserted";
+                if (shouldTransform(presetForThisRecording)) {
+                    postStatusSpinner("Formatting: " + labelForPreset(presetForThisRecording));
+                    try {
+                        finalText = TransformClient.transform(this, transcript, presetForThisRecording);
+                    } catch (Exception transformError) {
+                        finalStatus = "Inserted raw";
+                    }
+                }
+                String result = finalText;
+                String status = finalStatus;
+                mainHandler.post(() -> {
+                    insertVoiceText(result);
+                    finishProcessingState(status);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> finishProcessingState(concise(e)));
+            } finally {
+                if (!pcm.delete()) {
+                    pcm.deleteOnExit();
+                }
+            }
         });
     }
 
@@ -1217,11 +1264,12 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     }
 
     private void stopRecorderSilently() {
-        stopRecorderOnly();
+        stopCloudRecorderOnly();
+        stopOfflineRecorderOnly();
         finishProcessingState("Ready");
     }
 
-    private void stopRecorderOnly() {
+    private void stopCloudRecorderOnly() {
         if (recorder != null) {
             try {
                 recorder.stop();
@@ -1232,6 +1280,30 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         }
         recording = false;
         currentAudioFile = null;
+    }
+
+    private void stopOfflineRecorderOnly() {
+        offlineRecordLoop = false;
+        AudioRecord activeRecorder = offlineRecorder;
+        offlineRecorder = null;
+        if (activeRecorder != null) {
+            try {
+                activeRecorder.stop();
+            } catch (Exception ignored) {
+            }
+            activeRecorder.release();
+        }
+        Thread thread = offlineRecordThread;
+        offlineRecordThread = null;
+        if (thread != null && thread != Thread.currentThread()) {
+            try {
+                thread.join(700);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        recording = false;
+        currentPcmFile = null;
     }
 
     private void finishProcessingState(String status) {
@@ -1251,13 +1323,6 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             presetButton.setText(presetDropdownText());
         }
         setStatus(status);
-    }
-
-    private void destroySpeechRecognizer() {
-        if (speechRecognizer != null) {
-            speechRecognizer.destroy();
-            speechRecognizer = null;
-        }
     }
 
     private void destroySpellChecker() {

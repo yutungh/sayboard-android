@@ -10,11 +10,18 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class ProviderPickerActivity extends Activity {
+    static final String EXTRA_MODE = "mode";
+    static final String MODE_TRANSCRIPTION = "transcription";
+    static final String MODE_TRANSFORM = "transform";
+
+    private boolean transcription;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Ui.applyWindow(this);
-        setTitle("Voice provider");
+        transcription = MODE_TRANSCRIPTION.equals(getIntent().getStringExtra(EXTRA_MODE));
+        setTitle(transcription ? "Voice provider" : "Transform provider");
         setContentView(buildContent());
     }
 
@@ -35,23 +42,32 @@ public class ProviderPickerActivity extends Activity {
                 1f
         ));
 
-        TextView note = Ui.text(this, "Choose who handles speech-to-text. Models are selected separately.", 14, false, Ui.MUTED);
+        TextView note = Ui.text(this, transcription
+                ? "Choose who turns recorded audio into raw text."
+                : "Choose who cleans and formats the transcript.", 14, false, Ui.MUTED);
         note.setPadding(0, 0, 0, dp(8));
         root.addView(note);
 
-        LinearLayout available = section(root, "Available");
-        available.addView(providerRow("OpenAI", "Cloud transcription using the selected OpenAI model", Prefs.PROVIDER_OPENAI, true));
-        available.addView(divider());
-        available.addView(providerRow("Android device speech", "Uses the phone's built-in speech recognizer", Prefs.PROVIDER_ANDROID, true));
-
-        LinearLayout planned = section(root, "Planned providers");
-        planned.addView(providerRow("Grok / xAI", "xAI has a speech-to-text API; adapter not wired yet", Prefs.PROVIDER_XAI, false));
-        planned.addView(divider());
-        planned.addView(providerRow("Deepgram", "Strong dedicated STT option; adapter not wired yet", "deepgram", false));
-        planned.addView(divider());
-        planned.addView(providerRow("Local offline", "Best privacy path; model packaging still needed", "local", false));
-
+        LinearLayout providers = section(root, transcription ? "Voice input providers" : "Transform providers");
+        addProviderRows(providers);
         return screen;
+    }
+
+    private void addProviderRows(LinearLayout providers) {
+        String[] providerIds = {
+                Prefs.PROVIDER_OPENAI,
+                Prefs.PROVIDER_XAI,
+                Prefs.PROVIDER_ANTHROPIC,
+                Prefs.PROVIDER_DEEPGRAM,
+                Prefs.PROVIDER_OFFLINE_VOSK
+        };
+        for (int i = 0; i < providerIds.length; i++) {
+            String provider = providerIds[i];
+            providers.addView(providerRow(provider));
+            if (i < providerIds.length - 1) {
+                providers.addView(divider());
+            }
+        }
     }
 
     private View topBar() {
@@ -65,7 +81,7 @@ public class ProviderPickerActivity extends Activity {
         back.setOnClickListener(v -> finish());
         bar.addView(back);
 
-        TextView title = Ui.text(this, "Voice provider", 18, true, Ui.TEXT);
+        TextView title = Ui.text(this, transcription ? "Voice provider" : "Transform provider", 18, true, Ui.TEXT);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         titleParams.setMargins(dp(12), 0, 0, 0);
         bar.addView(title, titleParams);
@@ -86,34 +102,55 @@ public class ProviderPickerActivity extends Activity {
         return section;
     }
 
-    private View providerRow(String title, String subtitle, String provider, boolean enabled) {
+    private View providerRow(String provider) {
+        boolean enabled = transcription ? Prefs.supportsTranscription(provider) : Prefs.supportsTransform(provider);
+        String current = transcription ? Prefs.transcriptionProvider(this) : Prefs.transformProvider(this);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(16), dp(14), dp(14), dp(14));
-        row.setAlpha(enabled ? 1f : 0.62f);
+        row.setAlpha(enabled ? 1f : 0.56f);
         row.setClickable(true);
         row.setOnClickListener(v -> {
             if (!enabled) {
-                Toast.makeText(this, title + " is planned but not wired yet.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, capability(provider), Toast.LENGTH_SHORT).show();
                 return;
             }
-            Prefs.setTranscriptionProvider(this, provider);
-            Toast.makeText(this, title + " selected", Toast.LENGTH_SHORT).show();
+            if (transcription) {
+                Prefs.setTranscriptionProvider(this, provider);
+            } else {
+                Prefs.setTransformProvider(this, provider);
+            }
+            Toast.makeText(this, Prefs.providerLabel(provider) + " selected", Toast.LENGTH_SHORT).show();
             finish();
         });
 
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
-        labels.addView(Ui.text(this, title, 16, true, Ui.TEXT));
-        TextView sub = Ui.text(this, subtitle, 13, false, Ui.MUTED);
+        labels.addView(Ui.text(this, Prefs.providerLabel(provider), 16, true, Ui.TEXT));
+        TextView sub = Ui.text(this, capability(provider), 13, false, Ui.MUTED);
         sub.setPadding(0, dp(5), 0, 0);
         labels.addView(sub);
         row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        String current = Prefs.transcriptionProvider(this);
-        row.addView(Ui.text(this, provider.equals(current) ? "Selected" : ">", provider.equals(current) ? 13 : 20, true, provider.equals(current) ? Ui.ACCENT : Ui.MUTED));
+        String accessory = provider.equals(current) ? "Selected" : ">";
+        row.addView(Ui.text(this, accessory, "Selected".equals(accessory) ? 13 : 20, true, "Selected".equals(accessory) ? Ui.ACCENT : Ui.MUTED));
         return row;
+    }
+
+    private String capability(String provider) {
+        if (Prefs.PROVIDER_ANTHROPIC.equals(provider)) {
+            return "Transform only";
+        }
+        if (Prefs.PROVIDER_DEEPGRAM.equals(provider)) {
+            return "Transcription only";
+        }
+        if (Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)) {
+            return OfflineVoskClient.isModelReady(this)
+                    ? "Transcription only, offline model installed"
+                    : "Transcription only, downloads a local model";
+        }
+        return "Transcription and transform";
     }
 
     private View divider() {

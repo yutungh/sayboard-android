@@ -13,9 +13,10 @@ import java.util.UUID;
 
 final class Prefs {
     static final String PROVIDER_OPENAI = "openai";
-    static final String PROVIDER_ANDROID = "android";
     static final String PROVIDER_ANTHROPIC = "anthropic";
     static final String PROVIDER_XAI = "xai";
+    static final String PROVIDER_DEEPGRAM = "deepgram";
+    static final String PROVIDER_OFFLINE_VOSK = "offline_vosk";
 
     static final String PRESET_RAW = "raw";
     static final String PRESET_CASUAL = "casual";
@@ -28,6 +29,7 @@ final class Prefs {
     private static final String KEY_XAI_API_KEY = "xai_api_key";
     private static final String KEY_DEEPGRAM_API_KEY = "deepgram_api_key";
     private static final String KEY_TRANSCRIPTION_PROVIDER = "transcription_provider";
+    private static final String KEY_TRANSFORM_PROVIDER = "transform_provider";
     private static final String KEY_TRANSCRIPTION_MODEL = "transcription_model";
     private static final String KEY_TRANSFORM_MODEL = "transform_model";
     private static final String KEY_FAST_TRANSFORM_DEFAULT_MIGRATED = "fast_transform_default_migrated";
@@ -93,18 +95,31 @@ final class Prefs {
     }
 
     static String transcriptionProvider(Context context) {
-        return shared(context).getString(KEY_TRANSCRIPTION_PROVIDER, PROVIDER_OPENAI);
+        return sanitizeTranscriptionProvider(shared(context).getString(KEY_TRANSCRIPTION_PROVIDER, PROVIDER_OPENAI));
     }
 
     static void setTranscriptionProvider(Context context, String provider) {
-        if (!PROVIDER_OPENAI.equals(provider) && !PROVIDER_ANDROID.equals(provider)) {
-            provider = PROVIDER_OPENAI;
-        }
-        shared(context).edit().putString(KEY_TRANSCRIPTION_PROVIDER, provider).apply();
+        String sanitized = sanitizeTranscriptionProvider(provider);
+        shared(context).edit()
+                .putString(KEY_TRANSCRIPTION_PROVIDER, sanitized)
+                .putString(KEY_TRANSCRIPTION_MODEL, defaultTranscriptionModel(sanitized))
+                .apply();
+    }
+
+    static String transformProvider(Context context) {
+        return sanitizeTransformProvider(shared(context).getString(KEY_TRANSFORM_PROVIDER, PROVIDER_OPENAI));
+    }
+
+    static void setTransformProvider(Context context, String provider) {
+        String sanitized = sanitizeTransformProvider(provider);
+        shared(context).edit()
+                .putString(KEY_TRANSFORM_PROVIDER, sanitized)
+                .putString(KEY_TRANSFORM_MODEL, defaultTransformModel(sanitized))
+                .apply();
     }
 
     static String transcriptionModel(Context context) {
-        return shared(context).getString(KEY_TRANSCRIPTION_MODEL, "gpt-4o-transcribe");
+        return shared(context).getString(KEY_TRANSCRIPTION_MODEL, defaultTranscriptionModel(transcriptionProvider(context)));
     }
 
     static void setTranscriptionModel(Context context, String model) {
@@ -113,6 +128,10 @@ final class Prefs {
 
     static String transformModel(Context context) {
         SharedPreferences prefs = shared(context);
+        String provider = transformProvider(context);
+        if (!PROVIDER_OPENAI.equals(provider)) {
+            return prefs.getString(KEY_TRANSFORM_MODEL, defaultTransformModel(provider));
+        }
         if (!prefs.getBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, false)) {
             String stored = prefs.getString(KEY_TRANSFORM_MODEL, "");
             if (stored == null || stored.trim().isEmpty() || "gpt-5.5".equals(stored.trim())) {
@@ -125,7 +144,7 @@ final class Prefs {
             prefs.edit().putBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, true).apply();
             return stored.trim();
         }
-        return prefs.getString(KEY_TRANSFORM_MODEL, "gpt-5.5-mini");
+        return prefs.getString(KEY_TRANSFORM_MODEL, defaultTransformModel(PROVIDER_OPENAI));
     }
 
     static boolean showAllOpenAiModels(Context context) {
@@ -263,6 +282,7 @@ final class Prefs {
             Context context,
             String openAiApiKey,
             String transcriptionProvider,
+            String transformProvider,
             String transcriptionModel,
             String transformModel,
             boolean enableTransform,
@@ -270,7 +290,8 @@ final class Prefs {
     ) {
         shared(context).edit()
                 .putString(KEY_OPENAI_API_KEY, openAiApiKey.trim())
-                .putString(KEY_TRANSCRIPTION_PROVIDER, transcriptionProvider)
+                .putString(KEY_TRANSCRIPTION_PROVIDER, sanitizeTranscriptionProvider(transcriptionProvider))
+                .putString(KEY_TRANSFORM_PROVIDER, sanitizeTransformProvider(transformProvider))
                 .putString(KEY_TRANSCRIPTION_MODEL, transcriptionModel.trim())
                 .putString(KEY_TRANSFORM_MODEL, transformModel.trim())
                 .putBoolean(KEY_ENABLE_TRANSFORM, enableTransform)
@@ -326,6 +347,99 @@ final class Prefs {
             return preset;
         }
         return PRESET_CASUAL;
+    }
+
+    static String providerLabel(String provider) {
+        if (PROVIDER_ANTHROPIC.equals(provider)) {
+            return "Claude";
+        }
+        if (PROVIDER_XAI.equals(provider)) {
+            return "Grok / xAI";
+        }
+        if (PROVIDER_DEEPGRAM.equals(provider)) {
+            return "Deepgram";
+        }
+        if (PROVIDER_OFFLINE_VOSK.equals(provider)) {
+            return "Offline Vosk";
+        }
+        return "OpenAI";
+    }
+
+    static String apiKeyForProvider(Context context, String provider) {
+        if (PROVIDER_ANTHROPIC.equals(provider)) {
+            return anthropicApiKey(context);
+        }
+        if (PROVIDER_XAI.equals(provider)) {
+            return xAiApiKey(context);
+        }
+        if (PROVIDER_DEEPGRAM.equals(provider)) {
+            return deepgramApiKey(context);
+        }
+        if (PROVIDER_OFFLINE_VOSK.equals(provider)) {
+            return "";
+        }
+        return openAiApiKey(context);
+    }
+
+    static boolean hasApiKeyForProvider(Context context, String provider) {
+        return PROVIDER_OFFLINE_VOSK.equals(provider) || !trim(apiKeyForProvider(context, provider)).isEmpty();
+    }
+
+    static String defaultTranscriptionModel(String provider) {
+        String sanitized = sanitizeTranscriptionProvider(provider);
+        if (PROVIDER_XAI.equals(sanitized)) {
+            return "grok-transcribe";
+        }
+        if (PROVIDER_DEEPGRAM.equals(sanitized)) {
+            return "nova-3";
+        }
+        if (PROVIDER_OFFLINE_VOSK.equals(sanitized)) {
+            return "vosk-model-small-en-us-0.15";
+        }
+        return "gpt-4o-transcribe";
+    }
+
+    static String defaultTransformModel(String provider) {
+        String sanitized = sanitizeTransformProvider(provider);
+        if (PROVIDER_ANTHROPIC.equals(sanitized)) {
+            return "claude-haiku-4-5";
+        }
+        if (PROVIDER_XAI.equals(sanitized)) {
+            return "grok-4.3";
+        }
+        return "gpt-5.5-mini";
+    }
+
+    static boolean supportsTranscription(String provider) {
+        return PROVIDER_OPENAI.equals(provider)
+                || PROVIDER_XAI.equals(provider)
+                || PROVIDER_DEEPGRAM.equals(provider)
+                || PROVIDER_OFFLINE_VOSK.equals(provider);
+    }
+
+    static boolean supportsTransform(String provider) {
+        return PROVIDER_OPENAI.equals(provider)
+                || PROVIDER_XAI.equals(provider)
+                || PROVIDER_ANTHROPIC.equals(provider);
+    }
+
+    static String sanitizeTranscriptionProvider(String provider) {
+        if (PROVIDER_XAI.equals(provider)
+                || PROVIDER_DEEPGRAM.equals(provider)
+                || PROVIDER_OFFLINE_VOSK.equals(provider)
+                || PROVIDER_OPENAI.equals(provider)) {
+            return provider;
+        }
+        return PROVIDER_OPENAI;
+    }
+
+    static String sanitizeTransformProvider(String provider) {
+        if (PROVIDER_XAI.equals(provider)
+                || PROVIDER_ANTHROPIC.equals(provider)
+                || PROVIDER_OPENAI.equals(provider)) {
+            return provider;
+        }
+        return PROVIDER_OPENAI;
     }
 
     private static String sanitizeEditablePreset(String preset) {

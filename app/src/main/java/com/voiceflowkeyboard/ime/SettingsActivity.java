@@ -23,22 +23,15 @@ import android.widget.TextView;
 import java.util.List;
 
 public class SettingsActivity extends Activity {
-    private static final String[] PROVIDER_LABELS = {
-            "OpenAI audio API",
-            "Android device speech"
-    };
-    private static final String[] PROVIDER_VALUES = {
-            Prefs.PROVIDER_OPENAI,
-            Prefs.PROVIDER_ANDROID
-    };
-
     private TextView providerValue;
+    private TextView transformProviderValue;
     private TextView transcriptionModelValue;
     private TextView transformModelValue;
     private TextView activeProfileValue;
     private CheckBox transformEnabledInput;
     private CheckBox showAllModelsInput;
     private String selectedProvider;
+    private String selectedTransformProvider;
     private String selectedPreset;
     private boolean created;
 
@@ -62,6 +55,7 @@ public class SettingsActivity extends Activity {
 
     private View buildContent() {
         selectedProvider = Prefs.transcriptionProvider(this);
+        selectedTransformProvider = Prefs.transformProvider(this);
         selectedPreset = Prefs.activePreset(this);
 
         ScrollView scroll = new ScrollView(this);
@@ -80,8 +74,8 @@ public class SettingsActivity extends Activity {
         setup.addView(row("Active keyboard", activeKeyboardSummary(), ">", v -> showInputMethodPicker()));
 
         LinearLayout voice = section(root, "Voice input");
-        providerValue = rowValue(providerLabel(selectedProvider));
-        voice.addView(row("Provider", providerValue, ">", v -> startActivity(new Intent(this, ProviderPickerActivity.class))));
+        providerValue = rowValue(Prefs.providerLabel(selectedProvider));
+        voice.addView(row("Provider", providerValue, ">", v -> openProviderPicker(true)));
         voice.addView(divider());
         transcriptionModelValue = rowValue(Prefs.transcriptionModel(this));
         voice.addView(row("Transcription model", transcriptionModelValue, ">", v -> openModelPicker(true)));
@@ -90,6 +84,9 @@ public class SettingsActivity extends Activity {
         transformEnabledInput = new CheckBox(this);
         transformEnabledInput.setChecked(Prefs.enableTransform(this));
         transform.addView(checkboxRow("Transform transcript", transformEnabledInput, this::saveCurrentSettings));
+        transform.addView(divider());
+        transformProviderValue = rowValue(Prefs.providerLabel(selectedTransformProvider));
+        transform.addView(row("Provider", transformProviderValue, ">", v -> openProviderPicker(false)));
         transform.addView(divider());
         transformModelValue = rowValue(Prefs.transformModel(this));
         transform.addView(row("Transform model", transformModelValue, ">", v -> openModelPicker(false)));
@@ -112,7 +109,7 @@ public class SettingsActivity extends Activity {
         LinearLayout advanced = section(root, "Advanced");
         showAllModelsInput = new CheckBox(this);
         showAllModelsInput.setChecked(Prefs.showAllOpenAiModels(this));
-        advanced.addView(checkboxRow("Show all OpenAI models", showAllModelsInput,
+        advanced.addView(checkboxRow("Show all provider models", showAllModelsInput,
                 () -> Prefs.setShowAllOpenAiModels(this, showAllModelsInput.isChecked())));
         advanced.addView(divider());
         advanced.addView(row("Keyboard test", "Open test field", ">", v -> startActivity(new Intent(this, KeyboardTestActivity.class))));
@@ -131,11 +128,12 @@ public class SettingsActivity extends Activity {
         title.setIncludeFontPadding(false);
         header.addView(title);
 
-        TextView status = text(setupStatus(), 13, true, Prefs.hasOpenAiApiKey(this) ? Ui.ACCENT : Ui.MUTED);
+        boolean ready = isProviderSetupReady();
+        TextView status = text(setupStatus(), 13, true, ready ? Ui.ACCENT : Ui.MUTED);
         status.setPadding(dp(12), 0, dp(12), 0);
         status.setGravity(Gravity.CENTER);
         status.setMinHeight(dp(32));
-        status.setBackground(Ui.rounded(this, Prefs.hasOpenAiApiKey(this) ? Ui.ACCENT_SOFT : Ui.SURFACE_ALT, 16));
+        status.setBackground(Ui.rounded(this, ready ? Ui.ACCENT_SOFT : Ui.SURFACE_ALT, 16));
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -146,13 +144,21 @@ public class SettingsActivity extends Activity {
     }
 
     private String setupStatus() {
-        if (!Prefs.hasOpenAiApiKey(this)) {
-            return "OpenAI key needed for cloud transcription";
+        if (!Prefs.hasApiKeyForProvider(this, Prefs.transcriptionProvider(this))) {
+            return Prefs.providerLabel(Prefs.transcriptionProvider(this)) + " key needed for voice input";
+        }
+        if (Prefs.enableTransform(this) && !Prefs.hasApiKeyForProvider(this, Prefs.transformProvider(this))) {
+            return Prefs.providerLabel(Prefs.transformProvider(this)) + " key needed for transform";
         }
         if (!isVoiceFlowActive()) {
             return "Keyboard installed, not active";
         }
         return "Ready";
+    }
+
+    private boolean isProviderSetupReady() {
+        return Prefs.hasApiKeyForProvider(this, Prefs.transcriptionProvider(this))
+                && (!Prefs.enableTransform(this) || Prefs.hasApiKeyForProvider(this, Prefs.transformProvider(this)));
     }
 
     private LinearLayout section(LinearLayout root, String title) {
@@ -244,6 +250,12 @@ public class SettingsActivity extends Activity {
         return divider;
     }
 
+    private void openProviderPicker(boolean transcription) {
+        Intent intent = new Intent(this, ProviderPickerActivity.class);
+        intent.putExtra(ProviderPickerActivity.EXTRA_MODE, transcription ? ProviderPickerActivity.MODE_TRANSCRIPTION : ProviderPickerActivity.MODE_TRANSFORM);
+        startActivity(intent);
+    }
+
     private void openModelPicker(boolean transcription) {
         Intent intent = new Intent(this, ModelPickerActivity.class);
         intent.putExtra(ModelPickerActivity.EXTRA_MODE, transcription ? ModelPickerActivity.MODE_TRANSCRIPTION : ModelPickerActivity.MODE_TRANSFORM);
@@ -268,6 +280,7 @@ public class SettingsActivity extends Activity {
                 this,
                 Prefs.openAiApiKey(this),
                 selectedProvider,
+                selectedTransformProvider,
                 transcriptionModelValue.getText().toString(),
                 transformModelValue.getText().toString(),
                 transformEnabledInput.isChecked(),
@@ -293,15 +306,6 @@ public class SettingsActivity extends Activity {
                     openPrompt(id);
                 })
                 .show();
-    }
-
-    private String providerLabel(String provider) {
-        for (int i = 0; i < PROVIDER_VALUES.length; i++) {
-            if (PROVIDER_VALUES[i].equals(provider)) {
-                return PROVIDER_LABELS[i];
-            }
-        }
-        return PROVIDER_LABELS[0];
     }
 
     private String apiKeySummary() {

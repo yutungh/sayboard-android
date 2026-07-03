@@ -1,0 +1,267 @@
+package com.voiceflowkeyboard.ime;
+
+import android.content.Context;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+final class XAiClient {
+    private static final String MODELS_URL = "https://api.x.ai/v1/models";
+    private static final String STT_URL = "https://api.x.ai/v1/stt";
+    private static final String CHAT_URL = "https://api.x.ai/v1/chat/completions";
+    private static final Pattern WHOLE_MARKDOWN_FENCE = Pattern.compile(
+            "\\A```(?:[A-Za-z0-9_-]+)?[ \\t]*(?:\\r?\\n)?([\\s\\S]*?)(?:\\r?\\n)?```\\s*\\z"
+    );
+    private static final String OUTPUT_CONTRACT = "\n\nOutput contract:\n"
+            + "- Return plain text only.\n"
+            + "- Do not wrap the answer in Markdown code fences, quotes, or labels.\n"
+            + "- Do not add any text before or after the transformed text.";
+
+    private XAiClient() {
+    }
+
+    static String transcribe(Context context, File audioFile) throws Exception {
+        String apiKey = requiredApiKey(context);
+        String boundary = "VoiceFlowKeyboardBoundary" + System.currentTimeMillis();
+        HttpURLConnection connection = (HttpURLConnection) new URL(STT_URL).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(120000);
+        connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+
+        try (OutputStream out = connection.getOutputStream()) {
+            writeFilePart(out, boundary, "file", audioFile, "voiceflow-keyboard.m4a", "audio/mp4");
+            out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        }
+
+        JSONObject json = new JSONObject(readResponse(connection, "xAI transcription"));
+        String text = json.optString("text", "").trim();
+        if (!text.isEmpty()) {
+            return text;
+        }
+        throw new IOException("xAI transcription response did not include text.");
+    }
+
+    static String transform(Context context, String transcript, String preset) throws Exception {
+        String apiKey = requiredApiKey(context);
+        String model = nonEmpty(Prefs.transformModel(context), Prefs.defaultTransformModel(Prefs.PROVIDER_XAI));
+        String prompt = nonEmpty(Prefs.promptForPreset(context, preset), Prefs.defaultPromptForPreset(preset));
+        JSONObject body = new JSONObject()
+                .put("model", model)
+                .put("temperature", 0)
+                .put("reasoning_effort", "none")
+                .put("messages", new JSONArray()
+                        .put(new JSONObject()
+                                .put("role", "system")
+                                .put("content", prompt + OUTPUT_CONTRACT))
+                        .put(new JSONObject()
+                                .put("role", "user")
+                                .put("content", "Transcript:\n" + transcript)));
+
+        String response;
+        try {
+            response = sendChat(apiKey, body);
+        } catch (IOException e) {
+            if (!looksLikeReasoningOptionRejection(e)) {
+                throw e;
+            }
+            body.remove("reasoning_effort");
+            response = sendChat(apiKey, body);
+        }
+
+        JSONObject json = new JSONObject(response);
+        JSONArray choices = json.optJSONArray("choices");
+        if (choices != null && choices.length() > 0) {
+            JSONObject choice = choices.optJSONObject(0);
+            JSONObject message = choice == null ? null : choice.optJSONObject("message");
+            String content = message == null ? "" : message.optString("content", "");
+            if (!content.trim().isEmpty()) {
+                return stripWholeOutputWrappers(content).trim();
+            }
+        }
+        throw new IOException("xAI transform response did not include output text.");
+    }
+
+    static List<String> listModels(String apiKey) throws Exception {
+        String trimmedKey = apiKey == null ? "" : apiKey.trim();
+        if (trimmedKey.isEmpty()) {
+            throw new IllegalStateException("Add your xAI API key first.");
+        }
+        HttpURLConnection connection = (HttpURLConnection) new URL(MODELS_URL).openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(30000);
+        connection.setRequestProperty("Authorization", "Bearer " + trimmedKey);
+        JSONObject json = new JSONObject(readResponse(connection, "xAI model list"));
+        JSONArray data = json.optJSONArray("data");
+        List<String> models = new ArrayList<>();
+        if (data != null) {
+            for (int i = 0; i < data.length(); i++) {
+                JSONObject item = data.optJSONObject(i);
+                String id = item == null ? "" : item.optString("id", "");
+                if (!id.trim().isEmpty()) {
+                    models.add(id.trim());
+                }
+            }
+        }
+        Collections.sort(models);
+        return models;
+    }
+
+    static List<String> defaultTranscriptionModels() {
+        List<String> models = new ArrayList<>();
+        models.add("grok-transcribe");
+        return models;
+    }
+
+    static List<String> defaultTransformModels() {
+        List<String> models = new ArrayList<>();
+        models.add("grok-4.3");
+        models.add("grok-build-0.1");
+        return models;
+    }
+
+    static List<String> transformModelsFrom(List<String> models) {
+        List<String> filtered = new ArrayList<>();
+        for (String model : models) {
+            String lower = model.toLowerCase(Locale.US);
+            if (lower.startsWith("grok-") && !lower.contains("voice") && !lower.contains("transcribe")) {
+                filtered.add(model);
+            }
+        }
+        return withFallbacks(filtered, defaultTransformModels());
+    }
+
+    private static List<String> withFallbacks(List<String> models, List<String> fallbacks) {
+        List<String> merged = new ArrayList<>();
+        for (String fallback : fallbacks) {
+            if (!containsIgnoreCase(merged, fallback)) {
+                merged.add(fallback);
+            }
+        }
+        for (String model : models) {
+            if (!containsIgnoreCase(merged, model)) {
+                merged.add(model);
+            }
+        }
+        return merged;
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String value) {
+        for (String existing : values) {
+            if (existing.equalsIgnoreCase(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String sendChat(String apiKey, JSONObject body) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(CHAT_URL).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(120000);
+        connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+        connection.setRequestProperty("Content-Type", "application/json");
+        try (OutputStream out = connection.getOutputStream()) {
+            out.write(body.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        return readResponse(connection, "xAI transform");
+    }
+
+    private static void writeFilePart(
+            OutputStream out,
+            String boundary,
+            String name,
+            File file,
+            String filename,
+            String contentType
+    ) throws IOException {
+        out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(("Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + filename + "\"\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(("Content-Type: " + contentType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+        }
+        out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String readResponse(HttpURLConnection connection, String label) throws IOException {
+        int code = connection.getResponseCode();
+        InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
+        String body = readAll(stream);
+        if (code < 200 || code >= 300) {
+            throw new IOException(label + " failed (" + code + "): " + body);
+        }
+        return body;
+    }
+
+    private static String readAll(InputStream stream) throws IOException {
+        if (stream == null) {
+            return "";
+        }
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            StringBuilder builder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line);
+            }
+            return builder.toString();
+        }
+    }
+
+    private static boolean looksLikeReasoningOptionRejection(IOException e) {
+        String message = String.valueOf(e.getMessage()).toLowerCase(Locale.US);
+        return message.contains("reasoning_effort")
+                || message.contains("unsupported")
+                || message.contains("unknown parameter")
+                || message.contains("unrecognized")
+                || message.contains("invalid parameter");
+    }
+
+    private static String stripWholeOutputWrappers(String text) {
+        String result = text == null ? "" : text.trim();
+        Matcher fence = WHOLE_MARKDOWN_FENCE.matcher(result);
+        if (fence.matches()) {
+            result = fence.group(1).trim();
+        }
+        return result;
+    }
+
+    private static String requiredApiKey(Context context) {
+        String apiKey = Prefs.xAiApiKey(context);
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            throw new IllegalStateException("Add your xAI API key in VoiceFlow Keyboard settings.");
+        }
+        return apiKey.trim();
+    }
+
+    private static String nonEmpty(String value, String fallback) {
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+}

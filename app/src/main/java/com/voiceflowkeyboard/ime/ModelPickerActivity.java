@@ -26,6 +26,7 @@ public class ModelPickerActivity extends Activity {
     private CheckBox showAllInput;
     private EditText manualInput;
     private String mode;
+    private String provider;
     private boolean transcription;
 
     @Override
@@ -34,6 +35,7 @@ public class ModelPickerActivity extends Activity {
         Ui.applyWindow(this);
         mode = getIntent().getStringExtra(EXTRA_MODE);
         transcription = MODE_TRANSCRIPTION.equals(mode);
+        provider = transcription ? Prefs.transcriptionProvider(this) : Prefs.transformProvider(this);
         setTitle(transcription ? "Transcription model" : "Transform model");
         setContentView(buildContent());
         loadModels();
@@ -62,16 +64,17 @@ public class ModelPickerActivity extends Activity {
                 1f
         ));
 
-        TextView note = Ui.text(this, transcription
+        TextView note = Ui.text(this, (transcription
                 ? "Pick the model that turns your audio into raw text."
-                : "Pick the model that cleans and formats the transcript.", 14, false, Ui.MUTED);
+                : "Pick the model that cleans and formats the transcript.")
+                + " Current provider: " + Prefs.providerLabel(provider) + ".", 14, false, Ui.MUTED);
         note.setPadding(0, 0, 0, dp(8));
         root.addView(note);
 
         LinearLayout settings = section(root, "View");
         showAllInput = new CheckBox(this);
         showAllInput.setChecked(Prefs.showAllOpenAiModels(this));
-        settings.addView(checkRow("Show all OpenAI models", showAllInput, () -> {
+        settings.addView(checkRow("Show all provider models", showAllInput, () -> {
             Prefs.setShowAllOpenAiModels(this, showAllInput.isChecked());
             loadModels();
         }));
@@ -114,30 +117,74 @@ public class ModelPickerActivity extends Activity {
     private void loadModels() {
         list.removeAllViews();
         list.addView(loadingRow("Loading models..."));
-        String apiKey = Prefs.openAiApiKey(this);
+        String apiKey = Prefs.apiKeyForProvider(this, provider);
         boolean showAll = Prefs.showAllOpenAiModels(this);
+        if (Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)) {
+            renderModels(OfflineVoskClient.defaultTranscriptionModels(), OfflineVoskClient.isModelReady(this)
+                    ? "The local model is installed and runs on-device."
+                    : "This model downloads on first use, then runs on-device.");
+            return;
+        }
+        if (transcription && Prefs.PROVIDER_XAI.equals(provider)) {
+            renderModels(XAiClient.defaultTranscriptionModels(), "xAI REST speech-to-text currently exposes Grok transcription through this model.");
+            return;
+        }
+        if (transcription && Prefs.PROVIDER_DEEPGRAM.equals(provider)) {
+            renderModels(DeepgramClient.defaultTranscriptionModels(), "Deepgram Nova models are recommended for pre-recorded dictation.");
+            return;
+        }
         if (apiKey == null || apiKey.trim().isEmpty()) {
-            renderModels(transcription ? OpenAiClient.defaultTranscriptionModels() : OpenAiClient.defaultTransformModels(), "Add an OpenAI key to refresh live model availability.");
+            renderModels(defaultModels(), "Add a " + Prefs.providerLabel(provider) + " key to refresh live model availability.");
             return;
         }
         executor.execute(() -> {
             List<String> models;
-            String message = showAll ? "All matching models from your OpenAI account." : "Recommended models only.";
+            String message = showAll ? "All matching models from " + Prefs.providerLabel(provider) + "." : "Recommended models only.";
             try {
-                List<String> all = OpenAiClient.listModels(apiKey);
-                if (transcription) {
-                    models = showAll ? OpenAiClient.transcriptionModelsFrom(all) : OpenAiClient.recommendedTranscriptionModelsFrom(all);
+                if (Prefs.PROVIDER_OPENAI.equals(provider)) {
+                    List<String> all = OpenAiClient.listModels(apiKey);
+                    if (transcription) {
+                        models = showAll ? OpenAiClient.transcriptionModelsFrom(all) : OpenAiClient.recommendedTranscriptionModelsFrom(all);
+                    } else {
+                        models = showAll ? OpenAiClient.transformModelsFrom(all) : OpenAiClient.recommendedTransformModelsFrom(all);
+                    }
+                } else if (Prefs.PROVIDER_XAI.equals(provider)) {
+                    models = showAll ? XAiClient.transformModelsFrom(XAiClient.listModels(apiKey)) : defaultModels();
+                } else if (Prefs.PROVIDER_ANTHROPIC.equals(provider)) {
+                    models = showAll ? AnthropicClient.transformModelsFrom(AnthropicClient.listModels(apiKey)) : defaultModels();
                 } else {
-                    models = showAll ? OpenAiClient.transformModelsFrom(all) : OpenAiClient.recommendedTransformModelsFrom(all);
+                    models = defaultModels();
                 }
             } catch (Exception e) {
-                models = transcription ? OpenAiClient.defaultTranscriptionModels() : OpenAiClient.defaultTransformModels();
+                models = defaultModels();
                 message = "Using defaults because live model loading failed.";
             }
             List<String> finalModels = new ArrayList<>(models);
             String finalMessage = message;
             runOnUiThread(() -> renderModels(finalModels, finalMessage));
         });
+    }
+
+    private List<String> defaultModels() {
+        if (transcription) {
+            if (Prefs.PROVIDER_XAI.equals(provider)) {
+                return XAiClient.defaultTranscriptionModels();
+            }
+            if (Prefs.PROVIDER_DEEPGRAM.equals(provider)) {
+                return DeepgramClient.defaultTranscriptionModels();
+            }
+            if (Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)) {
+                return OfflineVoskClient.defaultTranscriptionModels();
+            }
+            return OpenAiClient.defaultTranscriptionModels();
+        }
+        if (Prefs.PROVIDER_XAI.equals(provider)) {
+            return XAiClient.defaultTransformModels();
+        }
+        if (Prefs.PROVIDER_ANTHROPIC.equals(provider)) {
+            return AnthropicClient.defaultTransformModels();
+        }
+        return OpenAiClient.defaultTransformModels();
     }
 
     private void renderModels(List<String> models, String message) {
@@ -257,6 +304,21 @@ public class ModelPickerActivity extends Activity {
         String lower = model.toLowerCase();
         if (lower.contains("mini")) {
             return "Faster and cheaper";
+        }
+        if (lower.contains("haiku")) {
+            return "Fast Claude model";
+        }
+        if (lower.contains("sonnet")) {
+            return "Balanced Claude model";
+        }
+        if (lower.contains("grok")) {
+            return lower.contains("transcribe") ? "xAI speech-to-text" : "xAI transform model";
+        }
+        if (lower.contains("nova")) {
+            return "Deepgram speech-to-text";
+        }
+        if (lower.contains("vosk")) {
+            return "Local offline speech-to-text";
         }
         if (lower.contains("transcribe")) {
             return "Speech-to-text";

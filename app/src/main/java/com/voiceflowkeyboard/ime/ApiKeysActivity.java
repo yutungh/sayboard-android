@@ -1,10 +1,12 @@
 package com.voiceflowkeyboard.ime;
 
 import android.app.Activity;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -16,11 +18,13 @@ public class ApiKeysActivity extends Activity {
     private EditText anthropicInput;
     private EditText xAiInput;
     private EditText deepgramInput;
+    private ScrollView scroll;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Ui.applyWindow(this);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         setTitle("API keys");
         setContentView(buildContent());
     }
@@ -32,10 +36,12 @@ public class ApiKeysActivity extends Activity {
 
         screen.addView(topBar());
 
-        ScrollView scroll = new ScrollView(this);
+        scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(8), dp(18), dp(24));
+        root.setPadding(dp(18), dp(8), dp(18), dp(160));
         scroll.addView(root);
         screen.addView(scroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -55,17 +61,17 @@ public class ApiKeysActivity extends Activity {
 
         anthropicInput = keyInput("Anthropic API key");
         anthropicInput.setText(Prefs.anthropicApiKey(this));
-        providers.addView(field("Claude", "Stored for future provider support", anthropicInput));
+        providers.addView(field("Claude", "Transform only", anthropicInput));
         providers.addView(divider());
 
         xAiInput = keyInput("xAI API key");
         xAiInput.setText(Prefs.xAiApiKey(this));
-        providers.addView(field("Grok", "Stored for future provider support", xAiInput));
+        providers.addView(field("Grok / xAI", "Transcription and transform", xAiInput));
         providers.addView(divider());
 
         deepgramInput = keyInput("Deepgram API key");
         deepgramInput.setText(Prefs.deepgramApiKey(this));
-        providers.addView(field("Deepgram", "Stored for future speech-to-text support", deepgramInput));
+        providers.addView(field("Deepgram", "Transcription only", deepgramInput));
         return screen;
     }
 
@@ -112,6 +118,7 @@ public class ApiKeysActivity extends Activity {
         LinearLayout field = new LinearLayout(this);
         field.setOrientation(LinearLayout.VERTICAL);
         field.setPadding(dp(16), dp(14), dp(16), dp(14));
+        field.setFocusable(false);
 
         LinearLayout line = new LinearLayout(this);
         line.setOrientation(LinearLayout.HORIZONTAL);
@@ -120,6 +127,12 @@ public class ApiKeysActivity extends Activity {
         line.addView(Ui.text(this, value, 12, false, Ui.MUTED));
         field.addView(line);
         field.addView(input);
+        input.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                scrollFieldIntoView(field);
+            }
+        });
+        input.setOnClickListener(v -> scrollFieldIntoView(field));
         return field;
     }
 
@@ -131,8 +144,31 @@ public class ApiKeysActivity extends Activity {
         input.setSingleLine(true);
         input.setPadding(0, dp(10), 0, dp(4));
         input.setBackgroundColor(0x00000000);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         return input;
+    }
+
+    private void scrollFieldIntoView(View field) {
+        if (scroll == null || field == null) {
+            return;
+        }
+        scroll.postDelayed(() -> scrollToField(field), 120);
+        scroll.postDelayed(() -> scrollToField(field), 360);
+    }
+
+    private void scrollToField(View field) {
+        Rect fieldRect = new Rect();
+        Rect scrollRect = new Rect();
+        field.getDrawingRect(fieldRect);
+        scroll.offsetDescendantRectToMyCoords(field, fieldRect);
+        scroll.getDrawingRect(scrollRect);
+        int topPadding = dp(14);
+        int bottomPadding = dp(28);
+        if (fieldRect.top < scrollRect.top + topPadding) {
+            scroll.smoothScrollTo(0, Math.max(0, fieldRect.top - topPadding));
+        } else if (fieldRect.bottom > scrollRect.bottom - bottomPadding) {
+            scroll.smoothScrollTo(0, fieldRect.bottom - scrollRect.height() + bottomPadding);
+        }
     }
 
     private void saveKeys() {

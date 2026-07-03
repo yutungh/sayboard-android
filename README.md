@@ -35,9 +35,12 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Permanent microphone button above the keys.
 - Whole-clip recording: record first, transcribe after stop, then insert.
 - OpenAI audio transcription via `/v1/audio/transcriptions`.
-- Optional Android device speech recognition fallback.
-- Optional transcript cleanup via OpenAI Responses API.
-- Editable API key, transcription model, transform model, and cleanup prompts.
+- Grok/xAI speech-to-text and transform support.
+- Claude/Anthropic transform support.
+- Deepgram speech-to-text support.
+- Optional local offline transcription with Vosk.
+- Optional transcript cleanup via configurable cloud transform providers.
+- Editable API keys, providers, transcription models, transform models, and cleanup prompts.
 - Transform profiles: Casual, Professional, and editable custom profiles.
 - Casual and Professional automatically use bullets or numbering when the transcript is clearly a list, steps, tasks, instructions, options, or grouped items.
 - Low-latency GPT-5 transform settings with safe fallback retry.
@@ -56,7 +59,8 @@ Known tradeoffs:
 
 - API keys are stored locally in app preferences. For production, migrate to encrypted storage.
 - Audio is sent to the configured transcription provider when using OpenAI transcription.
-- Realtime streaming transcription is not implemented yet. The current OpenAI path records the full clip and uploads after stop.
+- Realtime streaming transcription is not implemented yet. Cloud transcription records the full clip and uploads after stop.
+- Offline Vosk transcription downloads a local model on first use and runs the transcription on-device after recording stops.
 - Autocorrect is intentionally conservative and much simpler than Gboard or Apple Keyboard.
 - The UI is tuned for a modern Samsung/Android phone but is not exhaustively tested across devices.
 
@@ -140,6 +144,14 @@ The transform request uses low-latency options for GPT-5-style cleanup tasks:
 - prompt caching key/retention
 - fallback retry without optional latency fields if a selected model rejects them
 
+Provider support:
+
+- OpenAI: transcription and transform.
+- Grok / xAI: transcription and transform.
+- Claude / Anthropic: transform only.
+- Deepgram: transcription only.
+- Offline Vosk: transcription only, with a local model downloaded on first use.
+
 ## Transform Profiles
 
 The default profile is **Casual**. It lightly cleans raw speech-to-text while preserving wording, tone, intent, hedging, and order. It is designed for rambling thoughts, quick replies, notes, and normal dictation.
@@ -170,11 +182,11 @@ Read [PRIVACY.md](PRIVACY.md) before using or modifying this app.
 Current privacy model:
 
 - The app does not include a bundled API key.
-- Users bring their own OpenAI API key.
+- Users bring their own provider API keys.
 - API keys are saved locally on the device in app preferences.
-- When OpenAI transcription is enabled, recorded audio is sent to OpenAI after recording stops.
-- When transcript cleanup is enabled, transcript text is sent to the configured OpenAI transform model.
-- Claude/Anthropic, xAI, and Deepgram keys can be stored locally for provider work, but OpenAI is the only cloud provider currently wired into the transcription and transform path.
+- When a cloud transcription provider is enabled, recorded audio is sent to that provider after recording stops.
+- When transcript cleanup is enabled, transcript text is sent to the configured transform provider.
+- Offline Vosk transcription keeps audio local after its model has been downloaded.
 
 For a production release, you should:
 
