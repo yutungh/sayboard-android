@@ -116,7 +116,7 @@ final class Prefs {
         List<PromptProfile> profiles = readPromptProfiles(context);
         if (profiles.isEmpty()) {
             profiles.add(new PromptProfile(PRESET_CASUAL, "Casual"));
-            profiles.add(new PromptProfile(PRESET_BUSINESS, "Business"));
+            profiles.add(new PromptProfile(PRESET_BUSINESS, "Professional"));
         }
         return profiles;
     }
@@ -158,6 +158,32 @@ final class Prefs {
         shared(context).edit().putString(KEY_PROMPT_PREFIX + sanitized, prompt == null ? "" : prompt.trim()).apply();
     }
 
+    static boolean canDeletePromptProfile(String id) {
+        String sanitized = sanitizeEditablePreset(id);
+        return !PRESET_CASUAL.equals(sanitized) && !PRESET_BUSINESS.equals(sanitized);
+    }
+
+    static void deletePromptProfile(Context context, String id) {
+        String sanitized = sanitizeEditablePreset(id);
+        if (!canDeletePromptProfile(sanitized)) {
+            return;
+        }
+        List<PromptProfile> profiles = promptProfiles(context);
+        List<PromptProfile> kept = new ArrayList<>();
+        for (PromptProfile profile : profiles) {
+            if (!profile.id.equals(sanitized)) {
+                kept.add(profile);
+            }
+        }
+        SharedPreferences.Editor editor = shared(context).edit()
+                .remove(KEY_PROMPT_PREFIX + sanitized);
+        if (sanitized.equals(activePreset(context))) {
+            editor.putString(KEY_ACTIVE_PRESET, PRESET_CASUAL);
+        }
+        editor.apply();
+        writePromptProfiles(context, kept);
+    }
+
     static boolean enableTransform(Context context) {
         return shared(context).getBoolean(KEY_ENABLE_TRANSFORM, true);
     }
@@ -197,7 +223,7 @@ final class Prefs {
 
     static String defaultLabelForPreset(String preset) {
         if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
-            return "Business";
+            return "Professional";
         }
         return "Casual";
     }
@@ -247,13 +273,19 @@ final class Prefs {
             return migratedPromptProfiles(context);
         }
         List<PromptProfile> profiles = new ArrayList<>();
+        boolean changed = false;
         try {
             JSONArray array = new JSONArray(json);
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
                 String id = sanitizeSelectablePreset(item.optString("id", ""));
                 String name = item.optString("name", defaultLabelForPreset(id)).trim();
+                if (PRESET_BUSINESS.equals(id) && "Business".equals(name)) {
+                    name = "Professional";
+                    changed = true;
+                }
                 if (isLegacyDefaultCustom(id, name)) {
+                    changed = true;
                     continue;
                 }
                 if (!name.isEmpty() && !containsProfile(profiles, id)) {
@@ -264,13 +296,16 @@ final class Prefs {
             return migratedPromptProfiles(context);
         }
         ensureDefaultProfiles(profiles);
+        if (changed) {
+            writePromptProfiles(context, profiles);
+        }
         return profiles;
     }
 
     private static List<PromptProfile> migratedPromptProfiles(Context context) {
         List<PromptProfile> profiles = new ArrayList<>();
         profiles.add(new PromptProfile(PRESET_CASUAL, "Casual"));
-        profiles.add(new PromptProfile(PRESET_BUSINESS, "Business"));
+        profiles.add(new PromptProfile(PRESET_BUSINESS, "Professional"));
 
         String[] oldCustomIds = {"custom_1", "custom_2", "custom_3"};
         for (String oldId : oldCustomIds) {
@@ -290,7 +325,7 @@ final class Prefs {
         }
         if (!containsProfile(profiles, PRESET_BUSINESS)) {
             int index = Math.min(1, profiles.size());
-            profiles.add(index, new PromptProfile(PRESET_BUSINESS, "Business"));
+            profiles.add(index, new PromptProfile(PRESET_BUSINESS, "Professional"));
         }
     }
 

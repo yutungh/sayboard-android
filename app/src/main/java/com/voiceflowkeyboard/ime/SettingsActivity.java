@@ -121,7 +121,7 @@ public class SettingsActivity extends Activity {
         root.addView(label("Default transform profile"));
         root.addView(activePresetSpinner);
 
-        root.addView(text("Use Casual for everyday dictation. Use Business when you want a cleaner professional rewrite. Add your own prompts for repeat workflows.", 13, false));
+        root.addView(text("Use Casual for everyday dictation. Use Professional when you want a cleaner rewrite. Add your own prompts for repeat workflows.", 13, false));
 
         root.addView(label("Prompts"));
         for (PromptProfile profile : Prefs.promptProfiles(this)) {

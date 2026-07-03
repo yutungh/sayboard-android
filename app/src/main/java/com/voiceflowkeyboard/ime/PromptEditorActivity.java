@@ -1,6 +1,7 @@
 package com.voiceflowkeyboard.ime;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -57,6 +58,12 @@ public class PromptEditorActivity extends Activity {
         save.setOnClickListener(v -> savePrompt());
         root.addView(save);
 
+        if (Prefs.canDeletePromptProfile(promptId)) {
+            Button delete = button("Delete prompt");
+            delete.setOnClickListener(v -> confirmDelete());
+            root.addView(delete);
+        }
+
         Button back = button("Back to settings");
         back.setOnClickListener(v -> finish());
         root.addView(back);
@@ -68,6 +75,19 @@ public class PromptEditorActivity extends Activity {
         Prefs.savePromptProfile(this, promptId, nameInput.getText().toString(), promptInput.getText().toString());
         Toast.makeText(this, "Prompt saved", Toast.LENGTH_SHORT).show();
         finish();
+    }
+
+    private void confirmDelete() {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete prompt?")
+                .setMessage("This removes the prompt from Settings and the keyboard profile picker.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    Prefs.deletePromptProfile(this, promptId);
+                    Toast.makeText(this, "Prompt deleted", Toast.LENGTH_SHORT).show();
+                    finish();
+                })
+                .show();
     }
 
     private TextView label(String value) {
