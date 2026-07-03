@@ -71,7 +71,7 @@ final class OpenAiClient {
 
     static String transform(Context context, String transcript, String preset) throws Exception {
         String apiKey = requiredApiKey(context);
-        String model = nonEmpty(Prefs.transformModel(context), "gpt-5.5");
+        String model = nonEmpty(Prefs.transformModel(context), "gpt-5.5-mini");
         String prompt = nonEmpty(Prefs.promptForPreset(context, preset), Prefs.defaultPromptForPreset(preset));
         JSONObject baseBody = new JSONObject()
                 .put("model", model)
@@ -164,12 +164,12 @@ final class OpenAiClient {
 
     static List<String> defaultTransformModels() {
         List<String> models = new ArrayList<>();
-        models.add("gpt-5.5");
         models.add("gpt-5.5-mini");
-        models.add("gpt-5.4");
+        models.add("gpt-5.5");
         models.add("gpt-5.4-mini");
-        models.add("gpt-5");
+        models.add("gpt-5.4");
         models.add("gpt-5-mini");
+        models.add("gpt-5");
         models.add("gpt-4.1");
         models.add("gpt-4.1-mini");
         return models;
@@ -211,22 +211,28 @@ final class OpenAiClient {
 
     private static int modelPriority(String model) {
         String lower = model.toLowerCase(Locale.US);
-        if (lower.startsWith("gpt-5.5")) {
+        if (lower.startsWith("gpt-5.5-mini")) {
             return 0;
         }
-        if (lower.startsWith("gpt-5")) {
+        if (lower.startsWith("gpt-5.5")) {
             return 1;
         }
-        if (lower.startsWith("gpt-4")) {
+        if (lower.startsWith("gpt-5") && lower.contains("mini")) {
             return 2;
         }
-        if (lower.contains("transcribe")) {
+        if (lower.startsWith("gpt-5")) {
             return 3;
         }
-        if (lower.startsWith("whisper")) {
+        if (lower.startsWith("gpt-4")) {
             return 4;
         }
-        return 5;
+        if (lower.contains("transcribe")) {
+            return 5;
+        }
+        if (lower.startsWith("whisper")) {
+            return 6;
+        }
+        return 7;
     }
 
     private static String sendResponsesRequest(String apiKey, JSONObject body) throws IOException {

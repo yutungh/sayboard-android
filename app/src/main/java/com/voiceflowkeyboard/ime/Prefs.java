@@ -25,6 +25,7 @@ final class Prefs {
     private static final String KEY_TRANSCRIPTION_PROVIDER = "transcription_provider";
     private static final String KEY_TRANSCRIPTION_MODEL = "transcription_model";
     private static final String KEY_TRANSFORM_MODEL = "transform_model";
+    private static final String KEY_FAST_TRANSFORM_DEFAULT_MIGRATED = "fast_transform_default_migrated";
     private static final String KEY_ENABLE_TRANSFORM = "enable_transform";
     private static final String KEY_ACTIVE_PRESET = "active_preset";
     private static final String KEY_PROMPTS_JSON = "prompts_json";
@@ -52,7 +53,20 @@ final class Prefs {
     }
 
     static String transformModel(Context context) {
-        return shared(context).getString(KEY_TRANSFORM_MODEL, "gpt-5.5");
+        SharedPreferences prefs = shared(context);
+        if (!prefs.getBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, false)) {
+            String stored = prefs.getString(KEY_TRANSFORM_MODEL, "");
+            if (stored == null || stored.trim().isEmpty() || "gpt-5.5".equals(stored.trim())) {
+                prefs.edit()
+                        .putString(KEY_TRANSFORM_MODEL, "gpt-5.5-mini")
+                        .putBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, true)
+                        .apply();
+                return "gpt-5.5-mini";
+            }
+            prefs.edit().putBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, true).apply();
+            return stored.trim();
+        }
+        return prefs.getString(KEY_TRANSFORM_MODEL, "gpt-5.5-mini");
     }
 
     static String activePreset(Context context) {
