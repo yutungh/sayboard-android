@@ -3,38 +3,22 @@ package com.voiceflowkeyboard.ime;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
 final class Prefs {
     static final String PROVIDER_OPENAI = "openai";
     static final String PROVIDER_ANDROID = "android";
 
     static final String PRESET_RAW = "raw";
     static final String PRESET_CASUAL = "casual";
-    static final String PRESET_PROFESSIONAL = "professional";
-    static final String PRESET_CUSTOM_1 = "custom_1";
-    static final String PRESET_CUSTOM_2 = "custom_2";
-    static final String PRESET_CUSTOM_3 = "custom_3";
-
-    static final String[] SELECTABLE_PRESET_VALUES = {
-            PRESET_CASUAL,
-            PRESET_PROFESSIONAL,
-            PRESET_CUSTOM_1,
-            PRESET_CUSTOM_2,
-            PRESET_CUSTOM_3
-    };
-
-    static final String[] EDITABLE_PRESET_VALUES = {
-            PRESET_CASUAL,
-            PRESET_PROFESSIONAL,
-            PRESET_CUSTOM_1,
-            PRESET_CUSTOM_2,
-            PRESET_CUSTOM_3
-    };
-
-    static final String[] CUSTOM_PRESET_VALUES = {
-            PRESET_CUSTOM_1,
-            PRESET_CUSTOM_2,
-            PRESET_CUSTOM_3
-    };
+    static final String PRESET_BUSINESS = "business";
+    private static final String PRESET_PROFESSIONAL = "professional";
 
     private static final String FILE = "voiceflow_keyboard_settings";
     private static final String KEY_OPENAI_API_KEY = "openai_api_key";
@@ -43,6 +27,8 @@ final class Prefs {
     private static final String KEY_TRANSFORM_MODEL = "transform_model";
     private static final String KEY_ENABLE_TRANSFORM = "enable_transform";
     private static final String KEY_ACTIVE_PRESET = "active_preset";
+    private static final String KEY_PROMPTS_JSON = "prompts_json";
+    private static final String KEY_REPLACEMENTS_JSON = "replacements_json";
     private static final String KEY_PROMPT_PREFIX = "prompt_";
     private static final String KEY_PRESET_LABEL_PREFIX = "preset_label_";
 
@@ -76,18 +62,32 @@ final class Prefs {
 
     static String promptForPreset(Context context, String preset) {
         String sanitized = sanitizeEditablePreset(preset);
+        if (PRESET_BUSINESS.equals(sanitized)) {
+            String oldProfessional = shared(context).getString(KEY_PROMPT_PREFIX + PRESET_PROFESSIONAL, null);
+            if (oldProfessional != null && !oldProfessional.trim().isEmpty()) {
+                return shared(context).getString(KEY_PROMPT_PREFIX + sanitized, oldProfessional);
+            }
+        }
         return shared(context).getString(KEY_PROMPT_PREFIX + sanitized, defaultPromptForPreset(sanitized));
     }
 
     static String labelForPreset(Context context, String preset) {
         String sanitized = sanitizeSelectablePreset(preset);
-        if (isCustomPreset(sanitized)) {
-            String label = shared(context).getString(KEY_PRESET_LABEL_PREFIX + sanitized, "");
-            if (label != null && !label.trim().isEmpty()) {
-                return label.trim();
+        for (PromptProfile profile : promptProfiles(context)) {
+            if (profile.id.equals(sanitized)) {
+                return profile.name;
             }
         }
         return defaultLabelForPreset(sanitized);
+    }
+
+    static String[] selectablePresetValues(Context context) {
+        List<PromptProfile> profiles = promptProfiles(context);
+        String[] values = new String[profiles.size()];
+        for (int i = 0; i < profiles.size(); i++) {
+            values[i] = profiles.get(i).id;
+        }
+        return values;
     }
 
     static String[] labelsForPresets(Context context, String[] presets) {
@@ -96,6 +96,52 @@ final class Prefs {
             labels[i] = labelForPreset(context, presets[i]);
         }
         return labels;
+    }
+
+    static List<PromptProfile> promptProfiles(Context context) {
+        List<PromptProfile> profiles = readPromptProfiles(context);
+        if (profiles.isEmpty()) {
+            profiles.add(new PromptProfile(PRESET_CASUAL, "Casual"));
+            profiles.add(new PromptProfile(PRESET_BUSINESS, "Business"));
+        }
+        return profiles;
+    }
+
+    static PromptProfile promptProfile(Context context, String id) {
+        String sanitized = sanitizeEditablePreset(id);
+        for (PromptProfile profile : promptProfiles(context)) {
+            if (profile.id.equals(sanitized)) {
+                return profile;
+            }
+        }
+        return new PromptProfile(PRESET_CASUAL, "Casual");
+    }
+
+    static String addPromptProfile(Context context, String name) {
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) {
+            trimmed = "New prompt";
+        }
+        String id = "custom_" + UUID.randomUUID().toString().replace("-", "");
+        List<PromptProfile> profiles = promptProfiles(context);
+        profiles.add(new PromptProfile(id, trimmed));
+        writePromptProfiles(context, profiles);
+        shared(context).edit().putString(KEY_PROMPT_PREFIX + id, customPrompt()).apply();
+        return id;
+    }
+
+    static void savePromptProfile(Context context, String id, String name, String prompt) {
+        String sanitized = sanitizeEditablePreset(id);
+        List<PromptProfile> profiles = promptProfiles(context);
+        for (int i = 0; i < profiles.size(); i++) {
+            if (profiles.get(i).id.equals(sanitized)) {
+                String trimmedName = name == null ? "" : name.trim();
+                profiles.set(i, new PromptProfile(sanitized, trimmedName.isEmpty() ? defaultLabelForPreset(sanitized) : trimmedName));
+                break;
+            }
+        }
+        writePromptProfiles(context, profiles);
+        shared(context).edit().putString(KEY_PROMPT_PREFIX + sanitized, prompt == null ? "" : prompt.trim()).apply();
     }
 
     static boolean enableTransform(Context context) {
@@ -109,34 +155,20 @@ final class Prefs {
             String transcriptionModel,
             String transformModel,
             boolean enableTransform,
-            String activePreset,
-            String[] prompts,
-            String[] customLabels
+            String activePreset
     ) {
-        SharedPreferences.Editor editor = shared(context).edit()
+        shared(context).edit()
                 .putString(KEY_OPENAI_API_KEY, openAiApiKey.trim())
                 .putString(KEY_TRANSCRIPTION_PROVIDER, transcriptionProvider)
                 .putString(KEY_TRANSCRIPTION_MODEL, transcriptionModel.trim())
                 .putString(KEY_TRANSFORM_MODEL, transformModel.trim())
                 .putBoolean(KEY_ENABLE_TRANSFORM, enableTransform)
-                .putString(KEY_ACTIVE_PRESET, sanitizeSelectablePreset(activePreset));
-        for (int i = 0; i < EDITABLE_PRESET_VALUES.length && i < prompts.length; i++) {
-            editor.putString(KEY_PROMPT_PREFIX + EDITABLE_PRESET_VALUES[i], prompts[i].trim());
-        }
-        for (int i = 0; i < CUSTOM_PRESET_VALUES.length && i < customLabels.length; i++) {
-            editor.putString(KEY_PRESET_LABEL_PREFIX + CUSTOM_PRESET_VALUES[i], customLabels[i].trim());
-        }
-        editor.apply();
+                .putString(KEY_ACTIVE_PRESET, sanitizeSelectablePreset(activePreset))
+                .apply();
     }
 
     static void setActivePreset(Context context, String preset) {
         shared(context).edit().putString(KEY_ACTIVE_PRESET, sanitizeSelectablePreset(preset)).apply();
-    }
-
-    static boolean isCustomPreset(String preset) {
-        return PRESET_CUSTOM_1.equals(preset)
-                || PRESET_CUSTOM_2.equals(preset)
-                || PRESET_CUSTOM_3.equals(preset);
     }
 
     static int presetIndex(String[] presets, String preset) {
@@ -149,27 +181,9 @@ final class Prefs {
         return 0;
     }
 
-    static int customPresetIndex(String preset) {
-        for (int i = 0; i < CUSTOM_PRESET_VALUES.length; i++) {
-            if (CUSTOM_PRESET_VALUES[i].equals(preset)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     static String defaultLabelForPreset(String preset) {
-        if (PRESET_PROFESSIONAL.equals(preset)) {
-            return "Professional";
-        }
-        if (PRESET_CUSTOM_1.equals(preset)) {
-            return "Custom 1";
-        }
-        if (PRESET_CUSTOM_2.equals(preset)) {
-            return "Custom 2";
-        }
-        if (PRESET_CUSTOM_3.equals(preset)) {
-            return "Custom 3";
+        if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
+            return "Business";
         }
         return "Casual";
     }
@@ -181,8 +195,8 @@ final class Prefs {
         if (PRESET_CASUAL.equals(preset)) {
             return casualPrompt();
         }
-        if (PRESET_PROFESSIONAL.equals(preset)) {
-            return professionalPrompt();
+        if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
+            return businessPrompt();
         }
         return customPrompt();
     }
@@ -191,10 +205,14 @@ final class Prefs {
         if (preset == null) {
             return PRESET_CASUAL;
         }
-        for (String value : SELECTABLE_PRESET_VALUES) {
-            if (value.equals(preset)) {
-                return value;
-            }
+        if (PRESET_PROFESSIONAL.equals(preset)) {
+            return PRESET_BUSINESS;
+        }
+        if (preset.startsWith("custom_")) {
+            return preset;
+        }
+        if (PRESET_BUSINESS.equals(preset) || PRESET_CASUAL.equals(preset)) {
+            return preset;
         }
         return PRESET_CASUAL;
     }
@@ -206,12 +224,142 @@ final class Prefs {
         if (PRESET_RAW.equals(preset)) {
             return PRESET_RAW;
         }
-        for (String value : EDITABLE_PRESET_VALUES) {
-            if (value.equals(preset)) {
-                return value;
+        return sanitizeSelectablePreset(preset);
+    }
+
+    private static List<PromptProfile> readPromptProfiles(Context context) {
+        String json = shared(context).getString(KEY_PROMPTS_JSON, "");
+        if (json == null || json.trim().isEmpty()) {
+            return migratedPromptProfiles(context);
+        }
+        List<PromptProfile> profiles = new ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.getJSONObject(i);
+                String id = sanitizeSelectablePreset(item.optString("id", ""));
+                String name = item.optString("name", defaultLabelForPreset(id)).trim();
+                if (isLegacyDefaultCustom(id, name)) {
+                    continue;
+                }
+                if (!name.isEmpty() && !containsProfile(profiles, id)) {
+                    profiles.add(new PromptProfile(id, name));
+                }
+            }
+        } catch (JSONException ignored) {
+            return migratedPromptProfiles(context);
+        }
+        ensureDefaultProfiles(profiles);
+        return profiles;
+    }
+
+    private static List<PromptProfile> migratedPromptProfiles(Context context) {
+        List<PromptProfile> profiles = new ArrayList<>();
+        profiles.add(new PromptProfile(PRESET_CASUAL, "Casual"));
+        profiles.add(new PromptProfile(PRESET_BUSINESS, "Business"));
+
+        String[] oldCustomIds = {"custom_1", "custom_2", "custom_3"};
+        for (String oldId : oldCustomIds) {
+            String label = shared(context).getString(KEY_PRESET_LABEL_PREFIX + oldId, "");
+            if (label != null && !label.trim().isEmpty() && !isLegacyDefaultCustom(oldId, label.trim())) {
+                String newId = oldId;
+                profiles.add(new PromptProfile(newId, label.trim()));
             }
         }
-        return PRESET_CASUAL;
+        writePromptProfiles(context, profiles);
+        return profiles;
+    }
+
+    private static void ensureDefaultProfiles(List<PromptProfile> profiles) {
+        if (!containsProfile(profiles, PRESET_CASUAL)) {
+            profiles.add(0, new PromptProfile(PRESET_CASUAL, "Casual"));
+        }
+        if (!containsProfile(profiles, PRESET_BUSINESS)) {
+            int index = Math.min(1, profiles.size());
+            profiles.add(index, new PromptProfile(PRESET_BUSINESS, "Business"));
+        }
+    }
+
+    private static boolean containsProfile(List<PromptProfile> profiles, String id) {
+        for (PromptProfile profile : profiles) {
+            if (profile.id.equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLegacyDefaultCustom(String id, String name) {
+        return ("custom_1".equals(id) && "Custom 1".equals(name))
+                || ("custom_2".equals(id) && "Custom 2".equals(name))
+                || ("custom_3".equals(id) && "Custom 3".equals(name));
+    }
+
+    private static void writePromptProfiles(Context context, List<PromptProfile> profiles) {
+        JSONArray array = new JSONArray();
+        for (PromptProfile profile : profiles) {
+            JSONObject item = new JSONObject();
+            try {
+                item.put("id", profile.id);
+                item.put("name", profile.name);
+                array.put(item);
+            } catch (JSONException ignored) {
+            }
+        }
+        shared(context).edit().putString(KEY_PROMPTS_JSON, array.toString()).apply();
+    }
+
+    static List<PhraseReplacement> userPhraseReplacements(Context context) {
+        List<PhraseReplacement> replacements = new ArrayList<>();
+        String json = shared(context).getString(KEY_REPLACEMENTS_JSON, "[]");
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.getJSONObject(i);
+                String from = item.optString("from", "").trim();
+                String to = item.optString("to", "").trim();
+                if (!from.isEmpty() && !to.isEmpty()) {
+                    replacements.add(new PhraseReplacement(from, to));
+                }
+            }
+        } catch (JSONException ignored) {
+        }
+        return replacements;
+    }
+
+    static void saveUserPhraseReplacements(Context context, List<PhraseReplacement> replacements) {
+        JSONArray array = new JSONArray();
+        for (PhraseReplacement replacement : replacements) {
+            if (replacement.from.trim().isEmpty() || replacement.to.trim().isEmpty()) {
+                continue;
+            }
+            JSONObject item = new JSONObject();
+            try {
+                item.put("from", replacement.from.trim());
+                item.put("to", replacement.to.trim());
+                array.put(item);
+            } catch (JSONException ignored) {
+            }
+        }
+        shared(context).edit().putString(KEY_REPLACEMENTS_JSON, array.toString()).apply();
+    }
+
+    static List<PhraseReplacement> backgroundPhraseReplacements() {
+        List<PhraseReplacement> replacements = new ArrayList<>();
+        replacements.add(new PhraseReplacement("Cloud Code", "Claude Code"));
+        replacements.add(new PhraseReplacement("Claud Code", "Claude Code"));
+        replacements.add(new PhraseReplacement("Clawed Code", "Claude Code"));
+        replacements.add(new PhraseReplacement("Chat GBT", "ChatGPT"));
+        replacements.add(new PhraseReplacement("Chat GPT", "ChatGPT"));
+        replacements.add(new PhraseReplacement("Open AI", "OpenAI"));
+        replacements.add(new PhraseReplacement("G Rock", "Grok"));
+        return replacements;
+    }
+
+    static List<PhraseReplacement> allPhraseReplacements(Context context) {
+        List<PhraseReplacement> replacements = backgroundPhraseReplacements();
+        replacements.addAll(userPhraseReplacements(context));
+        return replacements;
     }
 
     private static String casualPrompt() {
@@ -257,7 +405,7 @@ final class Prefs {
                 + "Return only the cleaned text.";
     }
 
-    private static String professionalPrompt() {
+    private static String businessPrompt() {
         return "You are a text-transformation tool, not a conversational assistant.\n\n"
                 + "Rewrite raw speech-to-text into clear, polished professional text while preserving the speaker's meaning, intent, factual content, and order.\n\n"
                 + "Allowed edits:\n\n"

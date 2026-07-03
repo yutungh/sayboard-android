@@ -23,6 +23,14 @@
             android:name=".KeyboardTestActivity"
             android:exported="true" />
 
+        <activity
+            android:name=".PromptEditorActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".FindReplaceActivity"
+            android:exported="false" />
+
         <service
             android:name=".VoiceFlowKeyboardService"
             android:exported="true"

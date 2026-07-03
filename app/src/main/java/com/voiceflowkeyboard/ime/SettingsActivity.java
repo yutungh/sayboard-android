@@ -2,6 +2,7 @@ package com.voiceflowkeyboard.ime;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -36,9 +37,9 @@ public class SettingsActivity extends Activity {
     private EditText transcriptionModelInput;
     private EditText transformModelInput;
     private Spinner activePresetSpinner;
-    private final EditText[] promptInputs = new EditText[Prefs.EDITABLE_PRESET_VALUES.length];
-    private final EditText[] customLabelInputs = new EditText[Prefs.CUSTOM_PRESET_VALUES.length];
+    private String[] activePresetValues;
     private CheckBox transformEnabledInput;
+    private boolean created;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,6 +47,15 @@ public class SettingsActivity extends Activity {
         requestAudioPermission();
         setTitle("VoiceFlow Keyboard");
         setContentView(buildContent());
+        created = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (created) {
+            setContentView(buildContent());
+        }
     }
 
     private View buildContent() {
@@ -87,36 +97,35 @@ public class SettingsActivity extends Activity {
         transformEnabledInput.setChecked(Prefs.enableTransform(this));
         root.addView(transformEnabledInput);
 
+        activePresetValues = Prefs.selectablePresetValues(this);
         activePresetSpinner = new Spinner(this);
         activePresetSpinner.setAdapter(new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
-                Prefs.labelsForPresets(this, Prefs.SELECTABLE_PRESET_VALUES)
+                Prefs.labelsForPresets(this, activePresetValues)
         ));
-        activePresetSpinner.setSelection(Prefs.presetIndex(Prefs.SELECTABLE_PRESET_VALUES, Prefs.activePreset(this)));
+        activePresetSpinner.setSelection(Prefs.presetIndex(activePresetValues, Prefs.activePreset(this)));
         root.addView(label("Default transform profile"));
         root.addView(activePresetSpinner);
 
-        root.addView(text("Use Casual for most dictation. Use Professional when you want more polish. Rename Custom profiles for your own workflows.", 13, false));
+        root.addView(text("Use Casual for everyday dictation. Use Business when you want a cleaner professional rewrite. Add your own prompts for repeat workflows.", 13, false));
 
-        for (int i = 0; i < Prefs.EDITABLE_PRESET_VALUES.length; i++) {
-            String preset = Prefs.EDITABLE_PRESET_VALUES[i];
-            if (Prefs.isCustomPreset(preset)) {
-                int customIndex = Prefs.customPresetIndex(preset);
-                EditText labelInput = input(Prefs.defaultLabelForPreset(preset), false, 1);
-                labelInput.setText(Prefs.labelForPreset(this, preset));
-                customLabelInputs[customIndex] = labelInput;
-                root.addView(label(Prefs.defaultLabelForPreset(preset) + " name"));
-                root.addView(labelInput);
-            }
-
-            EditText promptInput = input("Prompt", false, 8);
-            promptInput.setText(Prefs.promptForPreset(this, preset));
-            promptInput.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
-            promptInputs[i] = promptInput;
-            root.addView(label(Prefs.labelForPreset(this, preset) + " prompt"));
-            root.addView(promptInput);
+        root.addView(label("Prompts"));
+        for (PromptProfile profile : Prefs.promptProfiles(this)) {
+            Button promptButton = button(profile.name);
+            promptButton.setOnClickListener(v -> openPrompt(profile.id));
+            root.addView(promptButton);
         }
+
+        Button newPrompt = button("New prompt");
+        newPrompt.setOnClickListener(v -> showNewPromptDialog());
+        root.addView(newPrompt);
+
+        root.addView(label("Find and replace"));
+        root.addView(text("Add personal name and phrase corrections that should be applied after transcription. Built-in technical corrections run quietly in the background.", 13, false));
+        Button replacements = button("Edit find and replace");
+        replacements.setOnClickListener(v -> startActivity(new Intent(this, FindReplaceActivity.class)));
+        root.addView(replacements);
 
         Button save = button("Save settings");
         save.setOnClickListener(v -> saveSettings());
@@ -151,27 +160,29 @@ public class SettingsActivity extends Activity {
                 transcriptionModelInput.getText().toString(),
                 transformModelInput.getText().toString(),
                 transformEnabledInput.isChecked(),
-                Prefs.SELECTABLE_PRESET_VALUES[activePresetSpinner.getSelectedItemPosition()],
-                promptTexts(),
-                customLabelTexts()
+                activePresetValues[activePresetSpinner.getSelectedItemPosition()]
         );
         Toast.makeText(this, "VoiceFlow Keyboard settings saved", Toast.LENGTH_SHORT).show();
     }
 
-    private String[] promptTexts() {
-        String[] prompts = new String[promptInputs.length];
-        for (int i = 0; i < promptInputs.length; i++) {
-            prompts[i] = promptInputs[i].getText().toString();
-        }
-        return prompts;
+    private void openPrompt(String id) {
+        Intent intent = new Intent(this, PromptEditorActivity.class);
+        intent.putExtra(PromptEditorActivity.EXTRA_PROMPT_ID, id);
+        startActivity(intent);
     }
 
-    private String[] customLabelTexts() {
-        String[] labels = new String[customLabelInputs.length];
-        for (int i = 0; i < customLabelInputs.length; i++) {
-            labels[i] = customLabelInputs[i] == null ? "" : customLabelInputs[i].getText().toString();
-        }
-        return labels;
+    private void showNewPromptDialog() {
+        EditText nameInput = input("Prompt name", false, 1);
+        nameInput.setSingleLine(true);
+        new AlertDialog.Builder(this)
+                .setTitle("New prompt")
+                .setView(nameInput)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Create", (dialog, which) -> {
+                    String id = Prefs.addPromptProfile(this, nameInput.getText().toString());
+                    openPrompt(id);
+                })
+                .show();
     }
 
     private void requestAudioPermission() {

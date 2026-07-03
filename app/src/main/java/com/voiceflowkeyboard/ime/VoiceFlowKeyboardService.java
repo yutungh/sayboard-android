@@ -54,10 +54,6 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private static final int KEY_VISUAL_GAP_DP = 3;
     private static final int SPELL_CHECK_DELAY_MS = 120;
     private static final Map<String, String> COMMON_TYPOS = commonTypos();
-    private static final PhraseReplacement[] PHRASE_REPLACEMENTS = {
-            new PhraseReplacement("Cloud Code", "Claude Code")
-    };
-
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<TextView> keyButtons = new ArrayList<>();
@@ -306,7 +302,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private void showRecordingChips() {
         chipStrip.removeAllViews();
         chipStrip.setVisibility(View.VISIBLE);
-        for (String value : Prefs.SELECTABLE_PRESET_VALUES) {
+        for (String value : Prefs.selectablePresetValues(this)) {
             final String preset = value;
             TextView chip = chip(Prefs.labelForPreset(this, preset), v -> {
                 selectedPreset = preset;
@@ -333,8 +329,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
 
     private void showPresetMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        for (int i = 0; i < Prefs.SELECTABLE_PRESET_VALUES.length; i++) {
-            menu.getMenu().add(0, i, i, Prefs.labelForPreset(this, Prefs.SELECTABLE_PRESET_VALUES[i]));
+        String[] presets = Prefs.selectablePresetValues(this);
+        for (int i = 0; i < presets.length; i++) {
+            menu.getMenu().add(0, i, i, Prefs.labelForPreset(this, presets[i]));
         }
         menu.getMenu().add(1, 100, 100, "Settings");
         menu.setOnMenuItemClickListener(item -> {
@@ -344,8 +341,8 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                 return true;
             }
             int index = item.getItemId();
-            if (index >= 0 && index < Prefs.SELECTABLE_PRESET_VALUES.length) {
-                selectedPreset = Prefs.SELECTABLE_PRESET_VALUES[index];
+            if (index >= 0 && index < presets.length) {
+                selectedPreset = presets[index];
                 Prefs.setActivePreset(this, selectedPreset);
                 if (presetButton != null) {
                     presetButton.setText(presetDropdownText());
@@ -523,7 +520,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
 
     private String applyPhraseReplacements(String text) {
         String result = text;
-        for (PhraseReplacement replacement : PHRASE_REPLACEMENTS) {
+        for (PhraseReplacement replacement : Prefs.allPhraseReplacements(this)) {
             Pattern pattern = Pattern.compile("(?i)(?<![A-Za-z])" + Pattern.quote(replacement.from) + "(?![A-Za-z])");
             Matcher matcher = pattern.matcher(result);
             result = matcher.replaceAll(Matcher.quoteReplacement(replacement.to));
@@ -905,7 +902,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             return;
         }
         String text = before.toString();
-        for (PhraseReplacement replacement : PHRASE_REPLACEMENTS) {
+        for (PhraseReplacement replacement : Prefs.allPhraseReplacements(this)) {
             if (endsWithPhrase(text, replacement.from)) {
                 connection.deleteSurroundingText(replacement.from.length(), 0);
                 connection.commitText(replacement.to, 1);
@@ -1168,9 +1165,10 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     }
 
     private void cyclePreset(int direction) {
-        int index = presetIndex(selectedPreset);
-        int next = (index + direction + Prefs.SELECTABLE_PRESET_VALUES.length) % Prefs.SELECTABLE_PRESET_VALUES.length;
-        selectedPreset = Prefs.SELECTABLE_PRESET_VALUES[next];
+        String[] presets = Prefs.selectablePresetValues(this);
+        int index = Prefs.presetIndex(presets, selectedPreset);
+        int next = (index + direction + presets.length) % presets.length;
+        selectedPreset = presets[next];
         Prefs.setActivePreset(this, selectedPreset);
         if (presetButton != null) {
             presetButton.setText(presetDropdownText());
@@ -1180,7 +1178,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     }
 
     private int presetIndex(String preset) {
-        return Prefs.presetIndex(Prefs.SELECTABLE_PRESET_VALUES, preset);
+        return Prefs.presetIndex(Prefs.selectablePresetValues(this), preset);
     }
 
     private String selectedPresetLabel() {
@@ -1447,15 +1445,5 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         typos.put("ive", "I've");
         typos.put("ill", "I'll");
         return typos;
-    }
-
-    private static final class PhraseReplacement {
-        final String from;
-        final String to;
-
-        PhraseReplacement(String from, String to) {
-            this.from = from;
-            this.to = to;
-        }
     }
 }
