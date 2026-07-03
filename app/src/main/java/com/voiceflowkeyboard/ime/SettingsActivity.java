@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
@@ -48,6 +49,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Ui.applyWindow(this);
         requestAudioPermission();
         setTitle("VoiceFlow Keyboard");
         setContentView(buildContent());
@@ -139,9 +141,17 @@ public class SettingsActivity extends Activity {
         title.setIncludeFontPadding(false);
         header.addView(title);
 
-        TextView status = text(setupStatus(), 14, false, Prefs.hasOpenAiApiKey(this) ? Ui.ACCENT : Ui.MUTED);
-        status.setPadding(0, dp(8), 0, 0);
-        header.addView(status);
+        TextView status = text(setupStatus(), 13, true, Prefs.hasOpenAiApiKey(this) ? Ui.ACCENT : Ui.MUTED);
+        status.setPadding(dp(12), 0, dp(12), 0);
+        status.setGravity(Gravity.CENTER);
+        status.setMinHeight(dp(32));
+        status.setBackground(Ui.rounded(this, Prefs.hasOpenAiApiKey(this) ? Ui.ACCENT_SOFT : Ui.SURFACE_ALT, 16));
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        statusParams.setMargins(0, dp(14), 0, 0);
+        header.addView(status, statusParams);
         return header;
     }
 
@@ -158,16 +168,20 @@ public class SettingsActivity extends Activity {
     private LinearLayout section(LinearLayout root, String title) {
         TextView label = text(title, 13, true, Ui.MUTED);
         label.setAllCaps(true);
+        label.setLetterSpacing(0.04f);
         label.setPadding(0, dp(20), 0, dp(7));
         root.addView(label);
 
         LinearLayout section = new LinearLayout(this);
         section.setOrientation(LinearLayout.VERTICAL);
-        section.setBackgroundColor(Ui.SURFACE);
-        root.addView(section, new LinearLayout.LayoutParams(
+        section.setBackground(Ui.roundedStroke(this, Ui.SURFACE, 18, Ui.DIVIDER));
+        section.setPadding(0, dp(2), 0, dp(2));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
+        );
+        params.setMargins(0, 0, 0, dp(2));
+        root.addView(section, params);
         return section;
     }
 
@@ -179,9 +193,9 @@ public class SettingsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(62));
-        row.setPadding(dp(14), dp(9), dp(12), dp(9));
-        row.setBackgroundColor(Ui.SURFACE);
+        row.setMinimumHeight(dp(66));
+        row.setPadding(dp(16), dp(10), dp(12), dp(10));
+        row.setBackgroundColor(Color.TRANSPARENT);
         row.setClickable(listener != null);
         if (listener != null) {
             row.setOnClickListener(listener);
@@ -190,12 +204,12 @@ public class SettingsActivity extends Activity {
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
         labels.setGravity(Gravity.CENTER_VERTICAL);
-        labels.addView(text(title, 16, false, Ui.TEXT));
-        valueView.setPadding(0, dp(3), 0, 0);
+        labels.addView(text(title, 16, true, Ui.TEXT));
+        valueView.setPadding(0, dp(5), 0, 0);
         labels.addView(valueView);
         row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView end = text(accessory, 18, false, Ui.MUTED);
+        TextView end = text(accessory, 20, true, Ui.MUTED);
         end.setGravity(Gravity.CENTER);
         row.addView(end, new LinearLayout.LayoutParams(dp(28), LinearLayout.LayoutParams.MATCH_PARENT));
         return row;
@@ -205,16 +219,16 @@ public class SettingsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(58));
-        row.setPadding(dp(14), dp(8), dp(10), dp(8));
-        row.setBackgroundColor(Ui.SURFACE);
+        row.setMinimumHeight(dp(62));
+        row.setPadding(dp(16), dp(8), dp(10), dp(8));
+        row.setBackgroundColor(Color.TRANSPARENT);
         row.setClickable(true);
         row.setOnClickListener(v -> {
             checkBox.setChecked(!checkBox.isChecked());
             onChanged.run();
         });
 
-        TextView titleView = text(title, 16, false, Ui.TEXT);
+        TextView titleView = text(title, 16, true, Ui.TEXT);
         row.addView(titleView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         checkBox.setButtonTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT));
         checkBox.setOnClickListener(v -> onChanged.run());
@@ -231,10 +245,12 @@ public class SettingsActivity extends Activity {
     private View divider() {
         View divider = new View(this);
         divider.setBackgroundColor(Ui.DIVIDER);
-        divider.setLayoutParams(new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 Math.max(1, dp(1))
-        ));
+        );
+        params.setMargins(dp(16), 0, 0, 0);
+        divider.setLayoutParams(params);
         return divider;
     }
 

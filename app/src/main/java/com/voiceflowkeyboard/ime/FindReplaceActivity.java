@@ -4,8 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.os.Bundle;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -22,56 +22,102 @@ public class FindReplaceActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Ui.applyWindow(this);
         setTitle("Find and replace");
         replacements.addAll(Prefs.userPhraseReplacements(this));
         setContentView(buildContent());
     }
 
     private View buildContent() {
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(Ui.BACKGROUND);
+        screen.addView(topBar());
+
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        Ui.applySystemBarPadding(root, dp(20), dp(18), dp(20), dp(24));
-        root.setBackgroundColor(Ui.BACKGROUND);
+        root.setPadding(dp(18), dp(8), dp(18), dp(24));
         scroll.addView(root);
+        screen.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+        ));
 
-        root.addView(text("Find and replace", 24, true));
-        root.addView(text("Use this for names, nicknames, jargon, and phrases your speech model often hears wrong.", 14, false));
+        TextView note = Ui.text(this, "Use this for names, nicknames, jargon, and phrases your speech model often hears wrong.", 14, false, Ui.MUTED);
+        note.setPadding(0, 0, 0, dp(8));
+        root.addView(note);
 
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list);
         renderList();
+        return screen;
+    }
 
-        Button add = button("New replacement");
-        add.setOnClickListener(v -> showEditor(-1));
-        root.addView(add);
+    private View topBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(Ui.BACKGROUND);
+        Ui.applySystemBarPadding(bar, dp(16), dp(10), dp(16), dp(10));
 
-        Button save = button("Save replacements");
-        save.setOnClickListener(v -> save());
-        root.addView(save);
-
-        Button back = button("Back to settings");
+        TextView back = Ui.topAction(this, "Back", false);
         back.setOnClickListener(v -> finish());
-        root.addView(back);
-        return scroll;
+        bar.addView(back);
+
+        TextView title = Ui.text(this, "Find and replace", 18, true, Ui.TEXT);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        titleParams.setMargins(dp(12), 0, dp(12), 0);
+        bar.addView(title, titleParams);
+
+        TextView save = Ui.topAction(this, "Save", true);
+        save.setOnClickListener(v -> save());
+        bar.addView(save);
+        return bar;
     }
 
     private void renderList() {
         list.removeAllViews();
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        section.setBackground(Ui.roundedStroke(this, Ui.SURFACE, 18, Ui.DIVIDER));
+        list.addView(section);
+
         if (replacements.isEmpty()) {
-            TextView empty = text("No personal replacements yet.", 14, false);
-            empty.setPadding(0, dp(18), 0, 0);
-            list.addView(empty);
-            return;
+            TextView empty = Ui.text(this, "No personal replacements yet.", 15, false, Ui.MUTED);
+            empty.setPadding(dp(16), dp(18), dp(16), dp(18));
+            section.addView(empty);
+            section.addView(divider());
+        } else {
+            for (int i = 0; i < replacements.size(); i++) {
+                PhraseReplacement replacement = replacements.get(i);
+                final int index = i;
+                section.addView(row(replacement.from, replacement.to, v -> showEditor(index)));
+                section.addView(divider());
+            }
         }
-        for (int i = 0; i < replacements.size(); i++) {
-            PhraseReplacement replacement = replacements.get(i);
-            Button row = button(replacement.from + " -> " + replacement.to);
-            final int index = i;
-            row.setOnClickListener(v -> showEditor(index));
-            list.addView(row);
-        }
+        section.addView(row("+ New replacement", "Add a correction", v -> showEditor(-1)));
+    }
+
+    private View row(String title, String value, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(13), dp(12), dp(13));
+        row.setClickable(true);
+        row.setOnClickListener(listener);
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.addView(Ui.text(this, title, 16, true, Ui.TEXT));
+        TextView subtitle = Ui.text(this, value, 13, false, Ui.MUTED);
+        subtitle.setPadding(0, dp(5), 0, 0);
+        labels.addView(subtitle);
+        row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(Ui.text(this, ">", 20, true, Ui.MUTED));
+        return row;
     }
 
     private void showEditor(int index) {
@@ -122,7 +168,7 @@ public class FindReplaceActivity extends Activity {
     }
 
     private TextView label(String value) {
-        TextView label = text(value, 13, true);
+        TextView label = Ui.text(this, value, 13, true, Ui.MUTED);
         label.setPadding(0, dp(14), 0, dp(6));
         return label;
     }
@@ -130,40 +176,28 @@ public class FindReplaceActivity extends Activity {
     private EditText input(String hint) {
         EditText input = new EditText(this);
         input.setHint(hint);
-        input.setTextColor(0xff1f2328);
-        input.setHintTextColor(0xff5f6368);
+        input.setTextColor(Ui.TEXT);
+        input.setHintTextColor(Ui.MUTED);
         input.setSingleLine(true);
         input.setPadding(dp(12), dp(8), dp(12), dp(8));
-        input.setBackgroundColor(0xffffffff);
+        input.setBackground(Ui.roundedStroke(this, Ui.SURFACE, 12, Ui.DIVIDER));
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         return input;
     }
 
-    private Button button(String text) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setAllCaps(false);
+    private View divider() {
+        View divider = new View(this);
+        divider.setBackgroundColor(Ui.DIVIDER);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                Math.max(1, dp(1))
         );
-        params.setMargins(0, dp(14), 0, 0);
-        button.setLayoutParams(params);
-        return button;
-    }
-
-    private TextView text(String value, int sp, boolean bold) {
-        TextView text = new TextView(this);
-        text.setText(value);
-        text.setTextSize(sp);
-        text.setTextColor(0xff1f2328);
-        if (bold) {
-            text.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        }
-        return text;
+        params.setMargins(dp(16), 0, 0, 0);
+        divider.setLayoutParams(params);
+        return divider;
     }
 
     private int dp(int value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+        return Ui.dp(this, value);
     }
 }

@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -20,21 +19,32 @@ public class ApiKeysActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Ui.applyWindow(this);
         setTitle("API keys");
         setContentView(buildContent());
     }
 
     private View buildContent() {
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(Ui.BACKGROUND);
+
+        screen.addView(topBar());
+
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Ui.BACKGROUND);
-        Ui.applySystemBarPadding(root, dp(18), dp(16), dp(18), dp(22));
+        root.setPadding(dp(18), dp(8), dp(18), dp(24));
         scroll.addView(root);
+        screen.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+        ));
 
-        TextView title = text("API keys", 26, true, Ui.TEXT);
-        title.setIncludeFontPadding(false);
-        root.addView(title);
+        TextView note = Ui.text(this, "Add provider keys here first. VoiceFlow only enables provider features after the key is saved.", 14, false, Ui.MUTED);
+        note.setPadding(0, 0, 0, dp(8));
+        root.addView(note);
 
         LinearLayout providers = section(root, "Providers");
         openAiInput = keyInput("OpenAI API key");
@@ -44,32 +54,47 @@ public class ApiKeysActivity extends Activity {
 
         anthropicInput = keyInput("Anthropic API key");
         anthropicInput.setText(Prefs.anthropicApiKey(this));
-        providers.addView(field("Claude", "Stored for provider setup", anthropicInput));
+        providers.addView(field("Claude", "Stored for future provider support", anthropicInput));
         providers.addView(divider());
 
         xAiInput = keyInput("xAI API key");
         xAiInput.setText(Prefs.xAiApiKey(this));
-        providers.addView(field("Grok", "Stored for provider setup", xAiInput));
+        providers.addView(field("Grok", "Stored for future provider support", xAiInput));
+        return screen;
+    }
 
-        Button save = button("Save API keys");
-        save.setOnClickListener(v -> saveKeys());
-        root.addView(save);
+    private View topBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(Ui.BACKGROUND);
+        Ui.applySystemBarPadding(bar, dp(16), dp(10), dp(16), dp(10));
 
-        Button back = button("Back to settings");
+        TextView back = Ui.topAction(this, "Back", false);
         back.setOnClickListener(v -> finish());
-        root.addView(back);
-        return scroll;
+        bar.addView(back);
+
+        TextView title = Ui.text(this, "API keys", 18, true, Ui.TEXT);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        titleParams.setMargins(dp(12), 0, dp(12), 0);
+        bar.addView(title, titleParams);
+
+        TextView save = Ui.topAction(this, "Save", true);
+        save.setOnClickListener(v -> saveKeys());
+        bar.addView(save);
+        return bar;
     }
 
     private LinearLayout section(LinearLayout root, String title) {
-        TextView label = text(title, 13, true, Ui.MUTED);
+        TextView label = Ui.text(this, title, 12, true, Ui.MUTED);
         label.setAllCaps(true);
-        label.setPadding(0, dp(22), 0, dp(7));
+        label.setLetterSpacing(0.04f);
+        label.setPadding(0, dp(18), 0, dp(7));
         root.addView(label);
 
         LinearLayout section = new LinearLayout(this);
         section.setOrientation(LinearLayout.VERTICAL);
-        section.setBackgroundColor(Ui.SURFACE);
+        section.setBackground(Ui.roundedStroke(this, Ui.SURFACE, 18, Ui.DIVIDER));
         root.addView(section, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -80,14 +105,13 @@ public class ApiKeysActivity extends Activity {
     private View field(String title, String value, EditText input) {
         LinearLayout field = new LinearLayout(this);
         field.setOrientation(LinearLayout.VERTICAL);
-        field.setPadding(dp(14), dp(12), dp(14), dp(14));
-        field.setBackgroundColor(Ui.SURFACE);
+        field.setPadding(dp(16), dp(14), dp(16), dp(14));
 
         LinearLayout line = new LinearLayout(this);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
-        line.addView(text(title, 16, false, Ui.TEXT), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        line.addView(text(value, 13, false, Ui.MUTED));
+        line.addView(Ui.text(this, title, 16, true, Ui.TEXT), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        line.addView(Ui.text(this, value, 12, false, Ui.MUTED));
         field.addView(line);
         field.addView(input);
         return field;
@@ -99,7 +123,8 @@ public class ApiKeysActivity extends Activity {
         input.setTextColor(Ui.TEXT);
         input.setHintTextColor(Ui.MUTED);
         input.setSingleLine(true);
-        input.setPadding(0, dp(8), 0, 0);
+        input.setPadding(0, dp(10), 0, dp(4));
+        input.setBackgroundColor(0x00000000);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         return input;
     }
@@ -115,19 +140,6 @@ public class ApiKeysActivity extends Activity {
         finish();
     }
 
-    private Button button(String text) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setAllCaps(false);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        params.setMargins(0, dp(14), 0, 0);
-        button.setLayoutParams(params);
-        return button;
-    }
-
     private View divider() {
         View divider = new View(this);
         divider.setBackgroundColor(Ui.DIVIDER);
@@ -138,18 +150,7 @@ public class ApiKeysActivity extends Activity {
         return divider;
     }
 
-    private TextView text(String value, int sp, boolean bold, int color) {
-        TextView text = new TextView(this);
-        text.setText(value);
-        text.setTextSize(sp);
-        text.setTextColor(color);
-        if (bold) {
-            text.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        }
-        return text;
-    }
-
     private int dp(int value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+        return Ui.dp(this, value);
     }
 }
