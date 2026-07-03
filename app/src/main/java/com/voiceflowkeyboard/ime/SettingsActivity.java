@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.inputmethod.InputMethodManager;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -40,8 +41,8 @@ public class SettingsActivity extends Activity {
 
     private EditText apiKeyInput;
     private Spinner providerSpinner;
-    private EditText transcriptionModelInput;
-    private EditText transformModelInput;
+    private TextView transcriptionModelInput;
+    private TextView transformModelInput;
     private Spinner activePresetSpinner;
     private String[] activePresetValues;
     private CheckBox transformEnabledInput;
@@ -95,21 +96,13 @@ public class SettingsActivity extends Activity {
         root.addView(label("Transcription provider"));
         root.addView(providerSpinner);
 
-        transcriptionModelInput = input("gpt-4o-transcribe or whisper-1", false, 1);
-        transcriptionModelInput.setText(Prefs.transcriptionModel(this));
+        transcriptionModelInput = dropdownValue(Prefs.transcriptionModel(this), true);
         root.addView(label("OpenAI transcription model"));
         root.addView(transcriptionModelInput);
-        Button chooseTranscriptionModel = button("Choose transcription model");
-        chooseTranscriptionModel.setOnClickListener(v -> chooseModel(true));
-        root.addView(chooseTranscriptionModel);
 
-        transformModelInput = input("gpt-5.5", false, 1);
-        transformModelInput.setText(Prefs.transformModel(this));
+        transformModelInput = dropdownValue(Prefs.transformModel(this), false);
         root.addView(label("Transform model"));
         root.addView(transformModelInput);
-        Button chooseTransformModel = button("Choose transform model");
-        chooseTransformModel.setOnClickListener(v -> chooseModel(false));
-        root.addView(chooseTransformModel);
 
         transformEnabledInput = new CheckBox(this);
         transformEnabledInput.setText("Transform transcript before inserting");
@@ -214,7 +207,7 @@ public class SettingsActivity extends Activity {
         });
     }
 
-    private void showModelDialog(String title, List<String> models, EditText target) {
+    private void showModelDialog(String title, List<String> models, TextView target) {
         String[] items = models.toArray(new String[0]);
         new AlertDialog.Builder(this)
                 .setTitle(title)
@@ -278,6 +271,22 @@ public class SettingsActivity extends Activity {
                 ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         return input;
+    }
+
+    private TextView dropdownValue(String value, boolean transcription) {
+        TextView text = new TextView(this);
+        text.setText(value == null || value.trim().isEmpty() ? "Tap to load models" : value.trim());
+        text.setTextSize(16);
+        text.setTextColor(Color.rgb(31, 35, 40));
+        text.setGravity(Gravity.CENTER_VERTICAL);
+        text.setSingleLine(true);
+        text.setPadding(dp(12), dp(12), dp(12), dp(12));
+        text.setBackgroundColor(Color.WHITE);
+        text.setCompoundDrawablesWithIntrinsicBounds(0, 0, android.R.drawable.arrow_down_float, 0);
+        text.setCompoundDrawablePadding(dp(8));
+        text.setClickable(true);
+        text.setOnClickListener(v -> chooseModel(transcription));
+        return text;
     }
 
     private Button button(String text) {
