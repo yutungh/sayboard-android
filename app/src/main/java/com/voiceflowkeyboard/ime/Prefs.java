@@ -14,6 +14,8 @@ import java.util.UUID;
 final class Prefs {
     static final String PROVIDER_OPENAI = "openai";
     static final String PROVIDER_ANDROID = "android";
+    static final String PROVIDER_ANTHROPIC = "anthropic";
+    static final String PROVIDER_XAI = "xai";
 
     static final String PRESET_RAW = "raw";
     static final String PRESET_CASUAL = "casual";
@@ -22,10 +24,13 @@ final class Prefs {
 
     private static final String FILE = "voiceflow_keyboard_settings";
     private static final String KEY_OPENAI_API_KEY = "openai_api_key";
+    private static final String KEY_ANTHROPIC_API_KEY = "anthropic_api_key";
+    private static final String KEY_XAI_API_KEY = "xai_api_key";
     private static final String KEY_TRANSCRIPTION_PROVIDER = "transcription_provider";
     private static final String KEY_TRANSCRIPTION_MODEL = "transcription_model";
     private static final String KEY_TRANSFORM_MODEL = "transform_model";
     private static final String KEY_FAST_TRANSFORM_DEFAULT_MIGRATED = "fast_transform_default_migrated";
+    private static final String KEY_SHOW_ALL_OPENAI_MODELS = "show_all_openai_models";
     private static final String KEY_ENABLE_TRANSFORM = "enable_transform";
     private static final String KEY_ACTIVE_PRESET = "active_preset";
     private static final String KEY_PROMPTS_JSON = "prompts_json";
@@ -42,6 +47,40 @@ final class Prefs {
 
     static String openAiApiKey(Context context) {
         return shared(context).getString(KEY_OPENAI_API_KEY, "");
+    }
+
+    static String anthropicApiKey(Context context) {
+        return shared(context).getString(KEY_ANTHROPIC_API_KEY, "");
+    }
+
+    static String xAiApiKey(Context context) {
+        return shared(context).getString(KEY_XAI_API_KEY, "");
+    }
+
+    static void saveApiKeys(Context context, String openAiApiKey, String anthropicApiKey, String xAiApiKey) {
+        shared(context).edit()
+                .putString(KEY_OPENAI_API_KEY, trim(openAiApiKey))
+                .putString(KEY_ANTHROPIC_API_KEY, trim(anthropicApiKey))
+                .putString(KEY_XAI_API_KEY, trim(xAiApiKey))
+                .apply();
+    }
+
+    static boolean hasOpenAiApiKey(Context context) {
+        return !trim(openAiApiKey(context)).isEmpty();
+    }
+
+    static int savedApiKeyCount(Context context) {
+        int count = 0;
+        if (!trim(openAiApiKey(context)).isEmpty()) {
+            count++;
+        }
+        if (!trim(anthropicApiKey(context)).isEmpty()) {
+            count++;
+        }
+        if (!trim(xAiApiKey(context)).isEmpty()) {
+            count++;
+        }
+        return count;
     }
 
     static String transcriptionProvider(Context context) {
@@ -67,6 +106,14 @@ final class Prefs {
             return stored.trim();
         }
         return prefs.getString(KEY_TRANSFORM_MODEL, "gpt-5.5-mini");
+    }
+
+    static boolean showAllOpenAiModels(Context context) {
+        return shared(context).getBoolean(KEY_SHOW_ALL_OPENAI_MODELS, false);
+    }
+
+    static void setShowAllOpenAiModels(Context context, boolean showAll) {
+        shared(context).edit().putBoolean(KEY_SHOW_ALL_OPENAI_MODELS, showAll).apply();
     }
 
     static String activePreset(Context context) {
@@ -265,6 +312,10 @@ final class Prefs {
             return PRESET_RAW;
         }
         return sanitizeSelectablePreset(preset);
+    }
+
+    private static String trim(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static List<PromptProfile> readPromptProfiles(Context context) {

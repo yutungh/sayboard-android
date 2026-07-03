@@ -5,23 +5,18 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
-import android.view.inputmethod.InputMethodManager;
 import android.view.View;
-import android.widget.ArrayAdapter;
-import android.widget.Button;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,15 +34,15 @@ public class SettingsActivity extends Activity {
             Prefs.PROVIDER_ANDROID
     };
 
-    private EditText apiKeyInput;
-    private Spinner providerSpinner;
-    private TextView transcriptionModelInput;
-    private TextView transformModelInput;
-    private Spinner activePresetSpinner;
-    private String[] activePresetValues;
-    private CheckBox transformEnabledInput;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private TextView providerValue;
+    private TextView transcriptionModelValue;
+    private TextView transformModelValue;
+    private TextView activeProfileValue;
+    private CheckBox transformEnabledInput;
+    private CheckBox showAllModelsInput;
+    private String selectedProvider;
+    private String selectedPreset;
     private boolean created;
 
     @Override
@@ -74,135 +69,228 @@ public class SettingsActivity extends Activity {
     }
 
     private View buildContent() {
+        selectedProvider = Prefs.transcriptionProvider(this);
+        selectedPreset = Prefs.activePreset(this);
+
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(18), dp(20), dp(24));
-        root.setBackgroundColor(Color.rgb(248, 249, 250));
+        root.setBackgroundColor(Ui.BACKGROUND);
+        Ui.applySystemBarPadding(root, dp(18), dp(16), dp(18), dp(22));
         scroll.addView(root);
 
-        TextView title = text("VoiceFlow Keyboard", 24, true);
-        root.addView(title);
-        root.addView(text("Configure transcription, cleanup prompts, and keyboard activation.", 14, false));
+        root.addView(header());
 
-        apiKeyInput = input("OpenAI API key", true, 1);
-        apiKeyInput.setText(Prefs.openAiApiKey(this));
-        root.addView(label("OpenAI API key"));
-        root.addView(apiKeyInput);
+        LinearLayout setup = section(root, "Setup");
+        setup.addView(row("API keys", apiKeySummary(), ">", v -> startActivity(new Intent(this, ApiKeysActivity.class))));
+        setup.addView(divider());
+        setup.addView(row("Active keyboard", activeKeyboardSummary(), ">", v -> showInputMethodPicker()));
 
-        providerSpinner = new Spinner(this);
-        providerSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, PROVIDER_LABELS));
-        providerSpinner.setSelection(providerIndex(Prefs.transcriptionProvider(this)));
-        root.addView(label("Transcription provider"));
-        root.addView(providerSpinner);
+        LinearLayout voice = section(root, "Voice input");
+        providerValue = rowValue(providerLabel(selectedProvider));
+        voice.addView(row("Provider", providerValue, ">", v -> showProviderDialog()));
+        voice.addView(divider());
+        transcriptionModelValue = rowValue(Prefs.transcriptionModel(this));
+        voice.addView(row("Transcription model", transcriptionModelValue, ">", v -> chooseModel(true)));
 
-        transcriptionModelInput = dropdownValue(Prefs.transcriptionModel(this), true);
-        root.addView(label("OpenAI transcription model"));
-        root.addView(transcriptionModelInput);
-
-        transformModelInput = dropdownValue(Prefs.transformModel(this), false);
-        root.addView(label("Transform model"));
-        root.addView(transformModelInput);
-
+        LinearLayout transform = section(root, "Text transform");
         transformEnabledInput = new CheckBox(this);
-        transformEnabledInput.setText("Transform transcript before inserting");
-        transformEnabledInput.setTextColor(Color.rgb(31, 35, 40));
         transformEnabledInput.setChecked(Prefs.enableTransform(this));
-        root.addView(transformEnabledInput);
+        transform.addView(checkboxRow("Transform transcript", transformEnabledInput, this::saveCurrentSettings));
+        transform.addView(divider());
+        transformModelValue = rowValue(Prefs.transformModel(this));
+        transform.addView(row("Transform model", transformModelValue, ">", v -> chooseModel(false)));
+        transform.addView(divider());
+        activeProfileValue = rowValue(Prefs.labelForPreset(this, selectedPreset));
+        transform.addView(row("Default profile", activeProfileValue, ">", v -> showProfileDialog()));
 
-        activePresetValues = Prefs.selectablePresetValues(this);
-        activePresetSpinner = new Spinner(this);
-        activePresetSpinner.setAdapter(new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                Prefs.labelsForPresets(this, activePresetValues)
-        ));
-        activePresetSpinner.setSelection(Prefs.presetIndex(activePresetValues, Prefs.activePreset(this)));
-        root.addView(label("Default transform profile"));
-        root.addView(activePresetSpinner);
-
-        root.addView(text("Use Casual for everyday dictation. Use Professional when you want a cleaner rewrite. Add your own prompts for repeat workflows.", 13, false));
-
-        root.addView(label("Prompts"));
-        for (PromptProfile profile : Prefs.promptProfiles(this)) {
-            Button promptButton = button(profile.name);
-            promptButton.setOnClickListener(v -> openPrompt(profile.id));
-            root.addView(promptButton);
+        LinearLayout prompts = section(root, "Prompts");
+        List<PromptProfile> profiles = Prefs.promptProfiles(this);
+        for (int i = 0; i < profiles.size(); i++) {
+            PromptProfile profile = profiles.get(i);
+            prompts.addView(row(profile.name, "Edit prompt", ">", v -> openPrompt(profile.id)));
+            prompts.addView(divider());
         }
+        prompts.addView(row("+ New prompt", "Create a profile", ">", v -> showNewPromptDialog()));
 
-        Button newPrompt = button("New prompt");
-        newPrompt.setOnClickListener(v -> showNewPromptDialog());
-        root.addView(newPrompt);
+        LinearLayout replacements = section(root, "Find and replace");
+        replacements.addView(row("Personal replacements", replacementSummary(), ">", v -> startActivity(new Intent(this, FindReplaceActivity.class))));
 
-        root.addView(label("Find and replace"));
-        root.addView(text("Add personal name and phrase corrections that should be applied after transcription. Built-in technical corrections run quietly in the background.", 13, false));
-        Button replacements = button("Edit find and replace");
-        replacements.setOnClickListener(v -> startActivity(new Intent(this, FindReplaceActivity.class)));
-        root.addView(replacements);
+        LinearLayout advanced = section(root, "Advanced");
+        showAllModelsInput = new CheckBox(this);
+        showAllModelsInput.setChecked(Prefs.showAllOpenAiModels(this));
+        advanced.addView(checkboxRow("Show all OpenAI models", showAllModelsInput,
+                () -> Prefs.setShowAllOpenAiModels(this, showAllModelsInput.isChecked())));
+        advanced.addView(divider());
+        advanced.addView(row("Keyboard test", "Open test field", ">", v -> startActivity(new Intent(this, KeyboardTestActivity.class))));
+        advanced.addView(divider());
+        advanced.addView(row("Android keyboard settings", "System settings", ">", v -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))));
 
-        Button save = button("Save settings");
-        save.setOnClickListener(v -> saveSettings());
-        root.addView(save);
-
-        Button inputSettings = button("Open keyboard settings");
-        inputSettings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
-        root.addView(inputSettings);
-
-        Button picker = button("Choose active keyboard");
-        picker.setOnClickListener(v -> {
-            InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            if (imm != null) {
-                imm.showInputMethodPicker();
-            }
-        });
-        root.addView(picker);
-
-        Button test = button("Open keyboard test");
-        test.setOnClickListener(v -> startActivity(new Intent(this, KeyboardTestActivity.class)));
-        root.addView(test);
-
-        root.addView(text("OpenAI audio records the whole clip, then transcribes and formats it after you stop. Android speech is available as a fallback but uses the device speech recognizer.", 13, false));
         return scroll;
     }
 
-    private void saveSettings() {
-        Prefs.save(
-                this,
-                apiKeyInput.getText().toString(),
-                PROVIDER_VALUES[providerSpinner.getSelectedItemPosition()],
-                transcriptionModelInput.getText().toString(),
-                transformModelInput.getText().toString(),
-                transformEnabledInput.isChecked(),
-                activePresetValues[activePresetSpinner.getSelectedItemPosition()]
-        );
-        Toast.makeText(this, "VoiceFlow Keyboard settings saved", Toast.LENGTH_SHORT).show();
+    private View header() {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(0, 0, 0, dp(8));
+
+        TextView title = text("VoiceFlow Keyboard", 26, true, Ui.TEXT);
+        title.setIncludeFontPadding(false);
+        header.addView(title);
+
+        TextView status = text(setupStatus(), 14, false, Prefs.hasOpenAiApiKey(this) ? Ui.ACCENT : Ui.MUTED);
+        status.setPadding(0, dp(8), 0, 0);
+        header.addView(status);
+        return header;
+    }
+
+    private String setupStatus() {
+        if (!Prefs.hasOpenAiApiKey(this)) {
+            return "OpenAI key needed for cloud transcription";
+        }
+        if (!isVoiceFlowActive()) {
+            return "Keyboard installed, not active";
+        }
+        return "Ready";
+    }
+
+    private LinearLayout section(LinearLayout root, String title) {
+        TextView label = text(title, 13, true, Ui.MUTED);
+        label.setAllCaps(true);
+        label.setPadding(0, dp(20), 0, dp(7));
+        root.addView(label);
+
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        section.setBackgroundColor(Ui.SURFACE);
+        root.addView(section, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        return section;
+    }
+
+    private View row(String title, String value, String accessory, View.OnClickListener listener) {
+        return row(title, rowValue(value), accessory, listener);
+    }
+
+    private View row(String title, TextView valueView, String accessory, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(62));
+        row.setPadding(dp(14), dp(9), dp(12), dp(9));
+        row.setBackgroundColor(Ui.SURFACE);
+        row.setClickable(listener != null);
+        if (listener != null) {
+            row.setOnClickListener(listener);
+        }
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setGravity(Gravity.CENTER_VERTICAL);
+        labels.addView(text(title, 16, false, Ui.TEXT));
+        valueView.setPadding(0, dp(3), 0, 0);
+        labels.addView(valueView);
+        row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView end = text(accessory, 18, false, Ui.MUTED);
+        end.setGravity(Gravity.CENTER);
+        row.addView(end, new LinearLayout.LayoutParams(dp(28), LinearLayout.LayoutParams.MATCH_PARENT));
+        return row;
+    }
+
+    private View checkboxRow(String title, CheckBox checkBox, Runnable onChanged) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(58));
+        row.setPadding(dp(14), dp(8), dp(10), dp(8));
+        row.setBackgroundColor(Ui.SURFACE);
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            checkBox.setChecked(!checkBox.isChecked());
+            onChanged.run();
+        });
+
+        TextView titleView = text(title, 16, false, Ui.TEXT);
+        row.addView(titleView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        checkBox.setButtonTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT));
+        checkBox.setOnClickListener(v -> onChanged.run());
+        row.addView(checkBox);
+        return row;
+    }
+
+    private TextView rowValue(String value) {
+        TextView text = text(value == null || value.trim().isEmpty() ? "Not set" : value.trim(), 13, false, Ui.MUTED);
+        text.setSingleLine(true);
+        return text;
+    }
+
+    private View divider() {
+        View divider = new View(this);
+        divider.setBackgroundColor(Ui.DIVIDER);
+        divider.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                Math.max(1, dp(1))
+        ));
+        return divider;
+    }
+
+    private void showProviderDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Provider")
+                .setItems(PROVIDER_LABELS, (dialog, which) -> {
+                    selectedProvider = PROVIDER_VALUES[which];
+                    providerValue.setText(providerLabel(selectedProvider));
+                    saveCurrentSettings();
+                })
+                .show();
     }
 
     private void chooseModel(boolean transcription) {
         String title = transcription ? "Transcription model" : "Transform model";
-        Toast.makeText(this, "Loading OpenAI models...", Toast.LENGTH_SHORT).show();
-        String apiKey = apiKeyInput.getText().toString();
+        String apiKey = Prefs.openAiApiKey(this);
+        boolean showAll = Prefs.showAllOpenAiModels(this);
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            showModelDialog(
+                    title,
+                    transcription ? OpenAiClient.defaultTranscriptionModels() : OpenAiClient.defaultTransformModels(),
+                    transcription ? transcriptionModelValue : transformModelValue
+            );
+            Toast.makeText(this, "Add an OpenAI key to refresh models.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Toast.makeText(this, "Loading models...", Toast.LENGTH_SHORT).show();
         executor.execute(() -> {
             List<String> models;
             String message = "";
             try {
                 List<String> allModels = OpenAiClient.listModels(apiKey);
-                models = transcription
-                        ? OpenAiClient.transcriptionModelsFrom(allModels)
-                        : OpenAiClient.transformModelsFrom(allModels);
+                if (transcription) {
+                    models = showAll
+                            ? OpenAiClient.transcriptionModelsFrom(allModels)
+                            : OpenAiClient.recommendedTranscriptionModelsFrom(allModels);
+                } else {
+                    models = showAll
+                            ? OpenAiClient.transformModelsFrom(allModels)
+                            : OpenAiClient.recommendedTransformModelsFrom(allModels);
+                }
             } catch (Exception e) {
                 models = transcription
                         ? OpenAiClient.defaultTranscriptionModels()
                         : OpenAiClient.defaultTransformModels();
-                message = "Using fallback model list: " + e.getMessage();
+                message = "Using recommended defaults.";
             }
             List<String> finalModels = models;
             String finalMessage = message;
-            mainHandler.post(() -> {
+            runOnUiThread(() -> {
                 if (!finalMessage.isEmpty()) {
-                    Toast.makeText(this, finalMessage, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, finalMessage, Toast.LENGTH_SHORT).show();
                 }
-                showModelDialog(title, finalModels, transcription ? transcriptionModelInput : transformModelInput);
+                showModelDialog(title, finalModels, transcription ? transcriptionModelValue : transformModelValue);
             });
         });
     }
@@ -211,9 +299,52 @@ public class SettingsActivity extends Activity {
         String[] items = models.toArray(new String[0]);
         new AlertDialog.Builder(this)
                 .setTitle(title)
-                .setItems(items, (dialog, which) -> target.setText(items[which]))
+                .setItems(items, (dialog, which) -> {
+                    target.setText(items[which]);
+                    saveCurrentSettings();
+                })
+                .setNeutralButton("Manual", (dialog, which) -> showManualModelDialog(title, target))
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void showManualModelDialog(String title, TextView target) {
+        EditText input = input("Model ID", 1, false);
+        input.setText(target.getText());
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    target.setText(input.getText().toString().trim());
+                    saveCurrentSettings();
+                })
+                .show();
+    }
+
+    private void showProfileDialog() {
+        String[] values = Prefs.selectablePresetValues(this);
+        String[] labels = Prefs.labelsForPresets(this, values);
+        new AlertDialog.Builder(this)
+                .setTitle("Default profile")
+                .setItems(labels, (dialog, which) -> {
+                    selectedPreset = values[which];
+                    activeProfileValue.setText(labels[which]);
+                    saveCurrentSettings();
+                })
+                .show();
+    }
+
+    private void saveCurrentSettings() {
+        Prefs.save(
+                this,
+                Prefs.openAiApiKey(this),
+                selectedProvider,
+                transcriptionModelValue.getText().toString(),
+                transformModelValue.getText().toString(),
+                transformEnabledInput.isChecked(),
+                selectedPreset
+        );
     }
 
     private void openPrompt(String id) {
@@ -223,7 +354,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void showNewPromptDialog() {
-        EditText nameInput = input("Prompt name", false, 1);
+        EditText nameInput = input("Prompt name", 1, false);
         nameInput.setSingleLine(true);
         new AlertDialog.Builder(this)
                 .setTitle("New prompt")
@@ -236,81 +367,77 @@ public class SettingsActivity extends Activity {
                 .show();
     }
 
-    private void requestAudioPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 10);
-        }
-    }
-
-    private int providerIndex(String provider) {
+    private String providerLabel(String provider) {
         for (int i = 0; i < PROVIDER_VALUES.length; i++) {
             if (PROVIDER_VALUES[i].equals(provider)) {
-                return i;
+                return PROVIDER_LABELS[i];
             }
         }
-        return 0;
+        return PROVIDER_LABELS[0];
     }
 
-    private TextView label(String value) {
-        TextView label = text(value, 13, true);
-        label.setPadding(0, dp(18), 0, dp(6));
-        return label;
+    private String apiKeySummary() {
+        int count = Prefs.savedApiKeyCount(this);
+        if (count == 0) {
+            return "OpenAI not set";
+        }
+        if (count == 1 && Prefs.hasOpenAiApiKey(this)) {
+            return "OpenAI connected";
+        }
+        return count + " keys saved";
     }
 
-    private EditText input(String hint, boolean password, int lines) {
+    private String replacementSummary() {
+        int count = Prefs.userPhraseReplacements(this).size();
+        return count == 0 ? "None" : count + " saved";
+    }
+
+    private String activeKeyboardSummary() {
+        return isVoiceFlowActive() ? "VoiceFlow" : "Choose keyboard";
+    }
+
+    private boolean isVoiceFlowActive() {
+        String current = Settings.Secure.getString(getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+        return current != null && current.contains("com.voiceflowkeyboard.ime/.VoiceFlowKeyboardService");
+    }
+
+    private void showInputMethodPicker() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showInputMethodPicker();
+        }
+    }
+
+    private EditText input(String hint, int lines, boolean password) {
         EditText input = new EditText(this);
         input.setHint(hint);
-        input.setTextColor(Color.rgb(31, 35, 40));
-        input.setHintTextColor(Color.rgb(95, 99, 104));
+        input.setTextColor(Ui.TEXT);
+        input.setHintTextColor(Ui.MUTED);
         input.setSingleLine(lines == 1);
         input.setMinLines(lines);
         input.setPadding(dp(12), dp(8), dp(12), dp(8));
-        input.setBackgroundColor(Color.WHITE);
         input.setInputType(password
                 ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         return input;
     }
 
-    private TextView dropdownValue(String value, boolean transcription) {
-        TextView text = new TextView(this);
-        text.setText(value == null || value.trim().isEmpty() ? "Tap to load models" : value.trim());
-        text.setTextSize(16);
-        text.setTextColor(Color.rgb(31, 35, 40));
-        text.setGravity(Gravity.CENTER_VERTICAL);
-        text.setSingleLine(true);
-        text.setPadding(dp(12), dp(12), dp(12), dp(12));
-        text.setBackgroundColor(Color.WHITE);
-        text.setCompoundDrawablesWithIntrinsicBounds(0, 0, android.R.drawable.arrow_down_float, 0);
-        text.setCompoundDrawablePadding(dp(8));
-        text.setClickable(true);
-        text.setOnClickListener(v -> chooseModel(transcription));
-        return text;
-    }
-
-    private Button button(String text) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setAllCaps(false);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        params.setMargins(0, dp(14), 0, 0);
-        button.setLayoutParams(params);
-        return button;
-    }
-
-    private TextView text(String value, int sp, boolean bold) {
+    private TextView text(String value, int sp, boolean bold, int color) {
         TextView text = new TextView(this);
         text.setText(value);
         text.setTextSize(sp);
-        text.setTextColor(Color.rgb(31, 35, 40));
+        text.setTextColor(color);
         if (bold) {
-            text.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            text.setTypeface(Typeface.DEFAULT_BOLD);
         }
         return text;
+    }
+
+    private void requestAudioPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 10);
+        }
     }
 
     private int dp(int value) {

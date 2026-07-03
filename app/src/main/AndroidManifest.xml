@@ -31,6 +31,10 @@
             android:name=".FindReplaceActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ApiKeysActivity"
+            android:exported="false" />
+
         <service
             android:name=".VoiceFlowKeyboardService"
             android:exported="true"

@@ -32,7 +32,7 @@ public class KeyboardTestActivity extends Activity {
     private LinearLayout buildContent() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(20), dp(20), dp(20));
+        Ui.applySystemBarPadding(root, dp(20), dp(20), dp(20), dp(20));
         root.setBackgroundColor(Color.rgb(248, 249, 250));
 
         TextView title = new TextView(this);

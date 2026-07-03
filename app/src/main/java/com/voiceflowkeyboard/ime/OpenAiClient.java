@@ -34,6 +34,14 @@ final class OpenAiClient {
     private static final Pattern WHOLE_MARKDOWN_FENCE = Pattern.compile(
             "\\A```(?:[A-Za-z0-9_-]+)?[ \\t]*(?:\\r?\\n)?([\\s\\S]*?)(?:\\r?\\n)?```\\s*\\z"
     );
+    private static final Pattern RECOMMENDED_TRANSCRIPTION_MODEL = Pattern.compile(
+            "^(gpt-4o(?:-mini)?-transcribe|whisper-1)$",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern RECOMMENDED_TRANSFORM_MODEL = Pattern.compile(
+            "^(gpt-5\\.5(?:-mini)?|gpt-5(?:-mini)?|gpt-4\\.1(?:-mini)?)$",
+            Pattern.CASE_INSENSITIVE
+    );
     private static final String OUTPUT_CONTRACT = "\n\nOutput contract:\n"
             + "- Return plain text only.\n"
             + "- Do not wrap the answer in Markdown code fences, quotes, or labels.\n"
@@ -135,6 +143,10 @@ final class OpenAiClient {
         return withFallbacks(filtered, defaultTranscriptionModels());
     }
 
+    static List<String> recommendedTranscriptionModelsFrom(List<String> models) {
+        return recommendedModelsFrom(models, defaultTranscriptionModels(), RECOMMENDED_TRANSCRIPTION_MODEL);
+    }
+
     static List<String> transformModelsFrom(List<String> models) {
         List<String> filtered = new ArrayList<>();
         for (String model : models) {
@@ -151,6 +163,10 @@ final class OpenAiClient {
             }
         }
         return withFallbacks(filtered, defaultTransformModels());
+    }
+
+    static List<String> recommendedTransformModelsFrom(List<String> models) {
+        return recommendedModelsFrom(models, defaultTransformModels(), RECOMMENDED_TRANSFORM_MODEL);
     }
 
     static List<String> defaultTranscriptionModels() {
@@ -188,6 +204,16 @@ final class OpenAiClient {
             }
         }
         return merged;
+    }
+
+    private static List<String> recommendedModelsFrom(List<String> models, List<String> fallbacks, Pattern pattern) {
+        List<String> filtered = new ArrayList<>();
+        for (String model : models) {
+            if (pattern.matcher(model).matches()) {
+                filtered.add(model);
+            }
+        }
+        return withFallbacks(filtered, fallbacks);
     }
 
     private static boolean containsIgnoreCase(List<String> values, String value) {

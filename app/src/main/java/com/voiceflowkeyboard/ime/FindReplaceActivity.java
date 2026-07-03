@@ -31,8 +31,8 @@ public class FindReplaceActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(18), dp(20), dp(24));
-        root.setBackgroundColor(0xfff8f9fa);
+        Ui.applySystemBarPadding(root, dp(20), dp(18), dp(20), dp(24));
+        root.setBackgroundColor(Ui.BACKGROUND);
         scroll.addView(root);
 
         root.addView(text("Find and replace", 24, true));
