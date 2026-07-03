@@ -15,6 +15,7 @@ public class ApiKeysActivity extends Activity {
     private EditText openAiInput;
     private EditText anthropicInput;
     private EditText xAiInput;
+    private EditText deepgramInput;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,6 +61,11 @@ public class ApiKeysActivity extends Activity {
         xAiInput = keyInput("xAI API key");
         xAiInput.setText(Prefs.xAiApiKey(this));
         providers.addView(field("Grok", "Stored for future provider support", xAiInput));
+        providers.addView(divider());
+
+        deepgramInput = keyInput("Deepgram API key");
+        deepgramInput.setText(Prefs.deepgramApiKey(this));
+        providers.addView(field("Deepgram", "Stored for future speech-to-text support", deepgramInput));
         return screen;
     }
 
@@ -134,7 +140,8 @@ public class ApiKeysActivity extends Activity {
                 this,
                 openAiInput.getText().toString(),
                 anthropicInput.getText().toString(),
-                xAiInput.getText().toString()
+                xAiInput.getText().toString(),
+                deepgramInput.getText().toString()
         );
         Toast.makeText(this, "API keys saved", Toast.LENGTH_SHORT).show();
         finish();

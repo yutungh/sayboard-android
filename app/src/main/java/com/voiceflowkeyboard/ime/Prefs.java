@@ -26,6 +26,7 @@ final class Prefs {
     private static final String KEY_OPENAI_API_KEY = "openai_api_key";
     private static final String KEY_ANTHROPIC_API_KEY = "anthropic_api_key";
     private static final String KEY_XAI_API_KEY = "xai_api_key";
+    private static final String KEY_DEEPGRAM_API_KEY = "deepgram_api_key";
     private static final String KEY_TRANSCRIPTION_PROVIDER = "transcription_provider";
     private static final String KEY_TRANSCRIPTION_MODEL = "transcription_model";
     private static final String KEY_TRANSFORM_MODEL = "transform_model";
@@ -57,11 +58,16 @@ final class Prefs {
         return shared(context).getString(KEY_XAI_API_KEY, "");
     }
 
-    static void saveApiKeys(Context context, String openAiApiKey, String anthropicApiKey, String xAiApiKey) {
+    static String deepgramApiKey(Context context) {
+        return shared(context).getString(KEY_DEEPGRAM_API_KEY, "");
+    }
+
+    static void saveApiKeys(Context context, String openAiApiKey, String anthropicApiKey, String xAiApiKey, String deepgramApiKey) {
         shared(context).edit()
                 .putString(KEY_OPENAI_API_KEY, trim(openAiApiKey))
                 .putString(KEY_ANTHROPIC_API_KEY, trim(anthropicApiKey))
                 .putString(KEY_XAI_API_KEY, trim(xAiApiKey))
+                .putString(KEY_DEEPGRAM_API_KEY, trim(deepgramApiKey))
                 .apply();
     }
 
@@ -80,6 +86,9 @@ final class Prefs {
         if (!trim(xAiApiKey(context)).isEmpty()) {
             count++;
         }
+        if (!trim(deepgramApiKey(context)).isEmpty()) {
+            count++;
+        }
         return count;
     }
 
@@ -87,8 +96,19 @@ final class Prefs {
         return shared(context).getString(KEY_TRANSCRIPTION_PROVIDER, PROVIDER_OPENAI);
     }
 
+    static void setTranscriptionProvider(Context context, String provider) {
+        if (!PROVIDER_OPENAI.equals(provider) && !PROVIDER_ANDROID.equals(provider)) {
+            provider = PROVIDER_OPENAI;
+        }
+        shared(context).edit().putString(KEY_TRANSCRIPTION_PROVIDER, provider).apply();
+    }
+
     static String transcriptionModel(Context context) {
         return shared(context).getString(KEY_TRANSCRIPTION_MODEL, "gpt-4o-transcribe");
+    }
+
+    static void setTranscriptionModel(Context context, String model) {
+        shared(context).edit().putString(KEY_TRANSCRIPTION_MODEL, trim(model)).apply();
     }
 
     static String transformModel(Context context) {
@@ -110,6 +130,10 @@ final class Prefs {
 
     static boolean showAllOpenAiModels(Context context) {
         return shared(context).getBoolean(KEY_SHOW_ALL_OPENAI_MODELS, false);
+    }
+
+    static void setTransformModel(Context context, String model) {
+        shared(context).edit().putString(KEY_TRANSFORM_MODEL, trim(model)).apply();
     }
 
     static void setShowAllOpenAiModels(Context context, boolean showAll) {

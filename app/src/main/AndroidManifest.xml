@@ -36,6 +36,14 @@
             android:name=".ApiKeysActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ProviderPickerActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ModelPickerActivity"
+            android:exported="false" />
+
         <service
             android:name=".VoiceFlowKeyboardService"
             android:exported="true"

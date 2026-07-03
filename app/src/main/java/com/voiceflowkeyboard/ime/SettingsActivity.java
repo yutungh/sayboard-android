@@ -19,11 +19,8 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class SettingsActivity extends Activity {
     private static final String[] PROVIDER_LABELS = {
@@ -35,7 +32,6 @@ public class SettingsActivity extends Activity {
             Prefs.PROVIDER_ANDROID
     };
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private TextView providerValue;
     private TextView transcriptionModelValue;
     private TextView transformModelValue;
@@ -64,12 +60,6 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    @Override
-    protected void onDestroy() {
-        executor.shutdownNow();
-        super.onDestroy();
-    }
-
     private View buildContent() {
         selectedProvider = Prefs.transcriptionProvider(this);
         selectedPreset = Prefs.activePreset(this);
@@ -91,10 +81,10 @@ public class SettingsActivity extends Activity {
 
         LinearLayout voice = section(root, "Voice input");
         providerValue = rowValue(providerLabel(selectedProvider));
-        voice.addView(row("Provider", providerValue, ">", v -> showProviderDialog()));
+        voice.addView(row("Provider", providerValue, ">", v -> startActivity(new Intent(this, ProviderPickerActivity.class))));
         voice.addView(divider());
         transcriptionModelValue = rowValue(Prefs.transcriptionModel(this));
-        voice.addView(row("Transcription model", transcriptionModelValue, ">", v -> chooseModel(true)));
+        voice.addView(row("Transcription model", transcriptionModelValue, ">", v -> openModelPicker(true)));
 
         LinearLayout transform = section(root, "Text transform");
         transformEnabledInput = new CheckBox(this);
@@ -102,7 +92,7 @@ public class SettingsActivity extends Activity {
         transform.addView(checkboxRow("Transform transcript", transformEnabledInput, this::saveCurrentSettings));
         transform.addView(divider());
         transformModelValue = rowValue(Prefs.transformModel(this));
-        transform.addView(row("Transform model", transformModelValue, ">", v -> chooseModel(false)));
+        transform.addView(row("Transform model", transformModelValue, ">", v -> openModelPicker(false)));
         transform.addView(divider());
         activeProfileValue = rowValue(Prefs.labelForPreset(this, selectedPreset));
         transform.addView(row("Default profile", activeProfileValue, ">", v -> showProfileDialog()));
@@ -254,88 +244,10 @@ public class SettingsActivity extends Activity {
         return divider;
     }
 
-    private void showProviderDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("Provider")
-                .setItems(PROVIDER_LABELS, (dialog, which) -> {
-                    selectedProvider = PROVIDER_VALUES[which];
-                    providerValue.setText(providerLabel(selectedProvider));
-                    saveCurrentSettings();
-                })
-                .show();
-    }
-
-    private void chooseModel(boolean transcription) {
-        String title = transcription ? "Transcription model" : "Transform model";
-        String apiKey = Prefs.openAiApiKey(this);
-        boolean showAll = Prefs.showAllOpenAiModels(this);
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            showModelDialog(
-                    title,
-                    transcription ? OpenAiClient.defaultTranscriptionModels() : OpenAiClient.defaultTransformModels(),
-                    transcription ? transcriptionModelValue : transformModelValue
-            );
-            Toast.makeText(this, "Add an OpenAI key to refresh models.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Toast.makeText(this, "Loading models...", Toast.LENGTH_SHORT).show();
-        executor.execute(() -> {
-            List<String> models;
-            String message = "";
-            try {
-                List<String> allModels = OpenAiClient.listModels(apiKey);
-                if (transcription) {
-                    models = showAll
-                            ? OpenAiClient.transcriptionModelsFrom(allModels)
-                            : OpenAiClient.recommendedTranscriptionModelsFrom(allModels);
-                } else {
-                    models = showAll
-                            ? OpenAiClient.transformModelsFrom(allModels)
-                            : OpenAiClient.recommendedTransformModelsFrom(allModels);
-                }
-            } catch (Exception e) {
-                models = transcription
-                        ? OpenAiClient.defaultTranscriptionModels()
-                        : OpenAiClient.defaultTransformModels();
-                message = "Using recommended defaults.";
-            }
-            List<String> finalModels = models;
-            String finalMessage = message;
-            runOnUiThread(() -> {
-                if (!finalMessage.isEmpty()) {
-                    Toast.makeText(this, finalMessage, Toast.LENGTH_SHORT).show();
-                }
-                showModelDialog(title, finalModels, transcription ? transcriptionModelValue : transformModelValue);
-            });
-        });
-    }
-
-    private void showModelDialog(String title, List<String> models, TextView target) {
-        String[] items = models.toArray(new String[0]);
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setItems(items, (dialog, which) -> {
-                    target.setText(items[which]);
-                    saveCurrentSettings();
-                })
-                .setNeutralButton("Manual", (dialog, which) -> showManualModelDialog(title, target))
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private void showManualModelDialog(String title, TextView target) {
-        EditText input = input("Model ID", 1, false);
-        input.setText(target.getText());
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Save", (dialog, which) -> {
-                    target.setText(input.getText().toString().trim());
-                    saveCurrentSettings();
-                })
-                .show();
+    private void openModelPicker(boolean transcription) {
+        Intent intent = new Intent(this, ModelPickerActivity.class);
+        intent.putExtra(ModelPickerActivity.EXTRA_MODE, transcription ? ModelPickerActivity.MODE_TRANSCRIPTION : ModelPickerActivity.MODE_TRANSFORM);
+        startActivity(intent);
     }
 
     private void showProfileDialog() {

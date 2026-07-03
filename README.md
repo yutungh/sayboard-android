@@ -14,6 +14,8 @@ Download the latest prototype APK from the [GitHub Releases page](https://github
 
 This is a debug-signed prototype build for sideloading and testing. For production use, build and sign your own release APK.
 
+Release APKs are built by GitHub Actions from the public repository. They do not include `.env.local` and do not bundle any API keys.
+
 ## Why This Exists
 
 Most mobile voice typing tools either insert raw dictation immediately or live inside one app. This project is a base for an Android keyboard that can:
@@ -36,7 +38,7 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Optional Android device speech recognition fallback.
 - Optional transcript cleanup via OpenAI Responses API.
 - Editable API key, transcription model, transform model, and cleanup prompts.
-- Transform profiles: Casual, Professional, and three editable custom profiles.
+- Transform profiles: Casual, Professional, and editable custom profiles.
 - Casual and Professional automatically use bullets or numbering when the transcript is clearly a list, steps, tasks, instructions, options, or grouped items.
 - Low-latency GPT-5 transform settings with safe fallback retry.
 - Minimal autocorrect layer using Android spell checker suggestions when available.
@@ -104,6 +106,26 @@ Then:
 5. Open Android keyboard settings and enable **VoiceFlow Keyboard**.
 6. Choose it from the keyboard picker.
 
+## Private Local Install
+
+For a personal phone build, you can keep API keys in an ignored `.env.local` file and seed them into the installed app preferences after install:
+
+```powershell
+.\gradlew.bat assembleDebug
+.\scripts\install-private.ps1 -Serial YOUR_DEVICE_SERIAL
+```
+
+Supported local key names:
+
+```text
+OpenAIAPIKey=...
+AnthropicAPIKey=...
+XAIAPIKey=...
+DeepgramAPIKey=...
+```
+
+This script does not compile keys into the APK. It installs the local debug APK, then writes the keys directly into the connected device's private app preferences with `adb run-as`.
+
 ## Recommended Model Setup
 
 The default OpenAI flow is:
@@ -152,6 +174,7 @@ Current privacy model:
 - API keys are saved locally on the device in app preferences.
 - When OpenAI transcription is enabled, recorded audio is sent to OpenAI after recording stops.
 - When transcript cleanup is enabled, transcript text is sent to the configured OpenAI transform model.
+- Claude/Anthropic, xAI, and Deepgram keys can be stored locally for provider work, but OpenAI is the only cloud provider currently wired into the transcription and transform path.
 
 For a production release, you should:
 
