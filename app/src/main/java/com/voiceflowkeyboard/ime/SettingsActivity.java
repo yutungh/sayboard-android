@@ -8,6 +8,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.inputmethod.InputMethodManager;
@@ -21,6 +23,10 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class SettingsActivity extends Activity {
     private static final String[] PROVIDER_LABELS = {
@@ -39,6 +45,8 @@ public class SettingsActivity extends Activity {
     private Spinner activePresetSpinner;
     private String[] activePresetValues;
     private CheckBox transformEnabledInput;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean created;
 
     @Override
@@ -56,6 +64,12 @@ public class SettingsActivity extends Activity {
         if (created) {
             setContentView(buildContent());
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        executor.shutdownNow();
+        super.onDestroy();
     }
 
     private View buildContent() {
@@ -85,11 +99,17 @@ public class SettingsActivity extends Activity {
         transcriptionModelInput.setText(Prefs.transcriptionModel(this));
         root.addView(label("OpenAI transcription model"));
         root.addView(transcriptionModelInput);
+        Button chooseTranscriptionModel = button("Choose transcription model");
+        chooseTranscriptionModel.setOnClickListener(v -> chooseModel(true));
+        root.addView(chooseTranscriptionModel);
 
         transformModelInput = input("gpt-5.5", false, 1);
         transformModelInput.setText(Prefs.transformModel(this));
         root.addView(label("Transform model"));
         root.addView(transformModelInput);
+        Button chooseTransformModel = button("Choose transform model");
+        chooseTransformModel.setOnClickListener(v -> chooseModel(false));
+        root.addView(chooseTransformModel);
 
         transformEnabledInput = new CheckBox(this);
         transformEnabledInput.setText("Transform transcript before inserting");
@@ -163,6 +183,44 @@ public class SettingsActivity extends Activity {
                 activePresetValues[activePresetSpinner.getSelectedItemPosition()]
         );
         Toast.makeText(this, "VoiceFlow Keyboard settings saved", Toast.LENGTH_SHORT).show();
+    }
+
+    private void chooseModel(boolean transcription) {
+        String title = transcription ? "Transcription model" : "Transform model";
+        Toast.makeText(this, "Loading OpenAI models...", Toast.LENGTH_SHORT).show();
+        String apiKey = apiKeyInput.getText().toString();
+        executor.execute(() -> {
+            List<String> models;
+            String message = "";
+            try {
+                List<String> allModels = OpenAiClient.listModels(apiKey);
+                models = transcription
+                        ? OpenAiClient.transcriptionModelsFrom(allModels)
+                        : OpenAiClient.transformModelsFrom(allModels);
+            } catch (Exception e) {
+                models = transcription
+                        ? OpenAiClient.defaultTranscriptionModels()
+                        : OpenAiClient.defaultTransformModels();
+                message = "Using fallback model list: " + e.getMessage();
+            }
+            List<String> finalModels = models;
+            String finalMessage = message;
+            mainHandler.post(() -> {
+                if (!finalMessage.isEmpty()) {
+                    Toast.makeText(this, finalMessage, Toast.LENGTH_LONG).show();
+                }
+                showModelDialog(title, finalModels, transcription ? transcriptionModelInput : transformModelInput);
+            });
+        });
+    }
+
+    private void showModelDialog(String title, List<String> models, EditText target) {
+        String[] items = models.toArray(new String[0]);
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setItems(items, (dialog, which) -> target.setText(items[which]))
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void openPrompt(String id) {

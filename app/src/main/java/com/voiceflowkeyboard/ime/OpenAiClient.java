@@ -19,11 +19,16 @@ import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class OpenAiClient {
+    private static final String MODELS_URL = "https://api.openai.com/v1/models";
     private static final String TRANSCRIPTIONS_URL = "https://api.openai.com/v1/audio/transcriptions";
     private static final String RESPONSES_URL = "https://api.openai.com/v1/responses";
     private static final Pattern WHOLE_MARKDOWN_FENCE = Pattern.compile(
@@ -90,6 +95,138 @@ final class OpenAiClient {
             return stripWholeOutputWrappers(parsed).trim();
         }
         throw new IOException("Transform response did not include output text.");
+    }
+
+    static List<String> listModels(String apiKey) throws Exception {
+        String trimmedKey = apiKey == null ? "" : apiKey.trim();
+        if (trimmedKey.isEmpty()) {
+            throw new IllegalStateException("Add your OpenAI API key first.");
+        }
+        HttpURLConnection connection = (HttpURLConnection) new URL(MODELS_URL).openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(30000);
+        connection.setRequestProperty("Authorization", "Bearer " + trimmedKey);
+
+        String response = readResponse(connection);
+        JSONObject json = new JSONObject(response);
+        JSONArray data = json.optJSONArray("data");
+        List<String> models = new ArrayList<>();
+        if (data != null) {
+            for (int i = 0; i < data.length(); i++) {
+                String id = data.optJSONObject(i) == null ? "" : data.optJSONObject(i).optString("id", "");
+                if (!id.trim().isEmpty()) {
+                    models.add(id.trim());
+                }
+            }
+        }
+        Collections.sort(models, modelComparator());
+        return models;
+    }
+
+    static List<String> transcriptionModelsFrom(List<String> models) {
+        List<String> filtered = new ArrayList<>();
+        for (String model : models) {
+            String lower = model.toLowerCase(Locale.US);
+            if (lower.contains("transcribe") || "whisper-1".equals(lower)) {
+                filtered.add(model);
+            }
+        }
+        return withFallbacks(filtered, defaultTranscriptionModels());
+    }
+
+    static List<String> transformModelsFrom(List<String> models) {
+        List<String> filtered = new ArrayList<>();
+        for (String model : models) {
+            String lower = model.toLowerCase(Locale.US);
+            if (lower.startsWith("gpt-")
+                    && !lower.contains("transcribe")
+                    && !lower.contains("tts")
+                    && !lower.contains("realtime")
+                    && !lower.contains("audio")
+                    && !lower.contains("image")
+                    && !lower.contains("embedding")
+                    && !lower.contains("moderation")) {
+                filtered.add(model);
+            }
+        }
+        return withFallbacks(filtered, defaultTransformModels());
+    }
+
+    static List<String> defaultTranscriptionModels() {
+        List<String> models = new ArrayList<>();
+        models.add("gpt-4o-transcribe");
+        models.add("gpt-4o-mini-transcribe");
+        models.add("gpt-4o-transcribe-diarize");
+        models.add("whisper-1");
+        return models;
+    }
+
+    static List<String> defaultTransformModels() {
+        List<String> models = new ArrayList<>();
+        models.add("gpt-5.5");
+        models.add("gpt-5.5-mini");
+        models.add("gpt-5.4");
+        models.add("gpt-5.4-mini");
+        models.add("gpt-5");
+        models.add("gpt-5-mini");
+        models.add("gpt-4.1");
+        models.add("gpt-4.1-mini");
+        return models;
+    }
+
+    private static List<String> withFallbacks(List<String> models, List<String> fallbacks) {
+        List<String> merged = new ArrayList<>();
+        for (String fallback : fallbacks) {
+            if (!containsIgnoreCase(merged, fallback)) {
+                merged.add(fallback);
+            }
+        }
+        for (String model : models) {
+            if (!containsIgnoreCase(merged, model)) {
+                merged.add(model);
+            }
+        }
+        return merged;
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String value) {
+        for (String existing : values) {
+            if (existing.equalsIgnoreCase(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Comparator<String> modelComparator() {
+        return (left, right) -> {
+            int priority = Integer.compare(modelPriority(left), modelPriority(right));
+            if (priority != 0) {
+                return priority;
+            }
+            return left.compareToIgnoreCase(right);
+        };
+    }
+
+    private static int modelPriority(String model) {
+        String lower = model.toLowerCase(Locale.US);
+        if (lower.startsWith("gpt-5.5")) {
+            return 0;
+        }
+        if (lower.startsWith("gpt-5")) {
+            return 1;
+        }
+        if (lower.startsWith("gpt-4")) {
+            return 2;
+        }
+        if (lower.contains("transcribe")) {
+            return 3;
+        }
+        if (lower.startsWith("whisper")) {
+            return 4;
+        }
+        return 5;
     }
 
     private static String sendResponsesRequest(String apiKey, JSONObject body) throws IOException {
