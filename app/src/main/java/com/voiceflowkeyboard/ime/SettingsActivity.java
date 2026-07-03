@@ -19,6 +19,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.List;
 
@@ -27,6 +28,7 @@ public class SettingsActivity extends Activity {
     private TextView transformProviderValue;
     private TextView transcriptionModelValue;
     private TextView transformModelValue;
+    private TextView offlineFallbackValue;
     private TextView activeProfileValue;
     private CheckBox transformEnabledInput;
     private CheckBox showAllModelsInput;
@@ -34,6 +36,7 @@ public class SettingsActivity extends Activity {
     private String selectedTransformProvider;
     private String selectedPreset;
     private boolean created;
+    private boolean downloadingOfflineModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +82,9 @@ public class SettingsActivity extends Activity {
         voice.addView(divider());
         transcriptionModelValue = rowValue(Prefs.transcriptionModel(this));
         voice.addView(row("Transcription model", transcriptionModelValue, ">", v -> openModelPicker(true)));
+        voice.addView(divider());
+        offlineFallbackValue = rowValue(offlineFallbackSummary());
+        voice.addView(row("Offline fallback", offlineFallbackValue, ">", v -> prepareOfflineFallbackModel()));
 
         LinearLayout transform = section(root, "Text transform");
         transformEnabledInput = new CheckBox(this);
@@ -322,6 +328,52 @@ public class SettingsActivity extends Activity {
     private String replacementSummary() {
         int count = Prefs.userPhraseReplacements(this).size();
         return count == 0 ? "None" : count + " saved";
+    }
+
+    private String offlineFallbackSummary() {
+        if (OfflineVoskClient.isModelReady(this)) {
+            return "Ready";
+        }
+        return downloadingOfflineModel ? "Downloading..." : "Download local model";
+    }
+
+    private void prepareOfflineFallbackModel() {
+        if (OfflineVoskClient.isModelReady(this)) {
+            Toast.makeText(this, "Offline fallback is ready", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (downloadingOfflineModel) {
+            return;
+        }
+        downloadingOfflineModel = true;
+        if (offlineFallbackValue != null) {
+            offlineFallbackValue.setText("Downloading...");
+        }
+        new Thread(() -> {
+            try {
+                OfflineVoskClient.ensureModel(getApplicationContext());
+                runOnUiThread(() -> {
+                    downloadingOfflineModel = false;
+                    if (offlineFallbackValue != null) {
+                        offlineFallbackValue.setText("Ready");
+                    }
+                    Toast.makeText(this, "Offline fallback is ready", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                String message = e.getMessage() == null ? "Download failed" : e.getMessage();
+                runOnUiThread(() -> {
+                    downloadingOfflineModel = false;
+                    if (offlineFallbackValue != null) {
+                        offlineFallbackValue.setText("Download local model");
+                    }
+                    new AlertDialog.Builder(this)
+                            .setTitle("Offline fallback")
+                            .setMessage(message)
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+            }
+        }, "VoiceFlowOfflineModelDownload").start();
     }
 
     private String activeKeyboardSummary() {

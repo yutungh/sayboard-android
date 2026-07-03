@@ -32,6 +32,8 @@ When offline Vosk transcription is selected:
 - transcription runs on the device after recording stops,
 - transcript cleanup may still send text to a cloud transform provider if cleanup is enabled.
 
+If a cloud transcription provider is selected but the phone has no validated internet connection, the app falls back to offline Vosk transcription when the local model is already installed. In that case, the recorded audio is not sent to the cloud for transcription.
+
 ## API Keys
 
 The app does not include bundled provider API keys.

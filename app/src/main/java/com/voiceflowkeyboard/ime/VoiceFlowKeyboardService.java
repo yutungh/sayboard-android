@@ -13,6 +13,9 @@ import android.inputmethodservice.InputMethodService;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -69,6 +72,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private boolean symbolsMode;
     private boolean symbolsMoreMode;
     private boolean deleteHeld;
+    private boolean offlineRecordingSession;
     private float downX;
     private long deleteHoldStartMs;
     private String selectedPreset;
@@ -1003,6 +1007,14 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         if (processing) {
             return;
         }
+        if (recording) {
+            if (offlineRecordingSession) {
+                stopOfflineRecordingAndTranscribe();
+            } else {
+                stopCloudRecordingAndTranscribe();
+            }
+            return;
+        }
         if (!recording && !shouldAllowVoiceCapture()) {
             setStatus("Voice disabled in this field");
             return;
@@ -1010,9 +1022,28 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         String provider = Prefs.transcriptionProvider(this);
         if (Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)) {
             toggleOfflineRecording();
+        } else if (!hasNetworkConnectivity()) {
+            toggleOfflineFallbackRecording(provider);
         } else {
             toggleCloudRecording();
         }
+    }
+
+    private void toggleOfflineFallbackRecording(String selectedProvider) {
+        if (recording) {
+            stopOfflineRecordingAndTranscribe();
+            return;
+        }
+        if (!hasAudioPermission()) {
+            setStatus("Open settings and grant microphone permission.");
+            openSettings();
+            return;
+        }
+        if (!OfflineVoskClient.isModelReady(this)) {
+            setStatus("No connection. Connect once to download offline model.");
+            return;
+        }
+        startOfflineRecordingNow("Offline fallback from " + Prefs.providerLabel(selectedProvider));
     }
 
     private void toggleCloudRecording() {
@@ -1038,6 +1069,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             recorder.prepare();
             recorder.start();
             recording = true;
+            offlineRecordingSession = false;
             setMicVisual(true, true);
             setKeyboardLocked(true);
             showRecordingChips();
@@ -1098,7 +1130,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     }
 
     private boolean shouldTransform(String preset) {
-        return Prefs.enableTransform(this) && !Prefs.PRESET_RAW.equals(preset);
+        return Prefs.enableTransform(this)
+                && !Prefs.PRESET_RAW.equals(preset)
+                && hasNetworkConnectivity();
     }
 
     private void toggleOfflineRecording() {
@@ -1115,7 +1149,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             prepareOfflineModel();
             return;
         }
-        startOfflineRecordingNow();
+        startOfflineRecordingNow("Recording offline");
     }
 
     private void prepareOfflineModel() {
@@ -1134,7 +1168,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         });
     }
 
-    private void startOfflineRecordingNow() {
+    private void startOfflineRecordingNow(String statusPrefix) {
         int minBuffer = AudioRecord.getMinBufferSize(
                 OfflineVoskClient.SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
@@ -1170,10 +1204,11 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             );
             offlineRecordThread.start();
             recording = true;
+            offlineRecordingSession = true;
             setMicVisual(true, true);
             setKeyboardLocked(true);
             showRecordingChips();
-            setStatus("Recording offline: " + selectedPresetLabel());
+            setStatus(statusPrefix + ": " + selectedPresetLabel());
         } catch (Exception e) {
             stopOfflineRecorderOnly();
             setStatus("Offline recording failed: " + concise(e));
@@ -1279,6 +1314,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             recorder = null;
         }
         recording = false;
+        offlineRecordingSession = false;
         currentAudioFile = null;
     }
 
@@ -1303,6 +1339,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             }
         }
         recording = false;
+        offlineRecordingSession = false;
         currentPcmFile = null;
     }
 
@@ -1341,6 +1378,21 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private boolean hasAudioPermission() {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
                 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasNetworkConnectivity() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager == null) {
+            return false;
+        }
+        Network network = connectivityManager.getActiveNetwork();
+        if (network == null) {
+            return false;
+        }
+        NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
+        return capabilities != null
+                && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
     }
 
     private void postStatus(String status) {

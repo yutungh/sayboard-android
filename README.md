@@ -39,6 +39,8 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Claude/Anthropic transform support.
 - Deepgram speech-to-text support.
 - Optional local offline transcription with Vosk.
+- Automatic offline transcription fallback when a cloud voice provider is selected but the phone has no validated internet connection.
+- Settings control to download the offline fallback model before you need it.
 - Optional transcript cleanup via configurable cloud transform providers.
 - Editable API keys, providers, transcription models, transform models, and cleanup prompts.
 - Transform profiles: Casual, Professional, and editable custom profiles.
@@ -61,6 +63,7 @@ Known tradeoffs:
 - Audio is sent to the configured transcription provider when using OpenAI transcription.
 - Realtime streaming transcription is not implemented yet. Cloud transcription records the full clip and uploads after stop.
 - Offline Vosk transcription downloads a local model on first use and runs the transcription on-device after recording stops.
+- Offline fallback requires the Vosk model to have been downloaded at least once while online. Use Settings > Voice input > Offline fallback to prepare it.
 - Autocorrect is intentionally conservative and much simpler than Gboard or Apple Keyboard.
 - The UI is tuned for a modern Samsung/Android phone but is not exhaustively tested across devices.
 
@@ -151,6 +154,7 @@ Provider support:
 - Claude / Anthropic: transform only.
 - Deepgram: transcription only.
 - Offline Vosk: transcription only, with a local model downloaded on first use.
+- Offline fallback: when OpenAI, Grok / xAI, or Deepgram is selected for voice input and the phone has no validated internet connection, VoiceFlow records with Offline Vosk instead if the model is already installed.
 
 ## Transform Profiles
 
