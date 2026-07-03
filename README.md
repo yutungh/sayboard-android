@@ -1,16 +1,26 @@
 # VoiceFlow Keyboard
 
-Open-source Android voice keyboard for people who want a Typeless-style mobile dictation workflow.
+Open-source Android voice keyboard for people who want a Typeless-style mobile dictation workflow, AI dictation cleanup, and bring-your-own-key voice-to-text on any Android phone.
 
-Record a voice note from the keyboard, transcribe it, optionally clean it with an LLM prompt, and insert the final text into any app. This is built as a native Android IME, so it works anywhere a normal keyboard works.
+Record a voice note from the keyboard, transcribe it, optionally clean it with an LLM prompt, and insert the final text into any app. VoiceFlow Keyboard is a native Android IME, so it works anywhere a normal keyboard works: chat apps, email, notes, search, docs, forms, and coding tools.
 
 > Not affiliated with Typeless, Voiceflow, Apple, Google, Anthropic, or OpenAI. "Typeless-style" is used only to describe the product category: voice-first mobile typing with AI cleanup.
 
+## Screenshots
+
 ![VoiceFlow Keyboard letters layout](docs/keyboard-letters.png)
+
+![VoiceFlow Keyboard symbols layout](docs/keyboard-symbols.png)
+
+![VoiceFlow Keyboard settings](docs/settings-v046.png)
+
+![VoiceFlow Keyboard voice model picker](docs/voice-picker-v046.png)
+
+![VoiceFlow Keyboard Offline Parakeet model details](docs/parakeet-v046.png)
 
 ## Try It
 
-Download the latest prototype APK from the [GitHub Releases page](https://github.com/yutungh/voiceflow-keyboard-android/releases/latest).
+Download the latest prototype APK from the [GitHub Releases page](https://github.com/yutungh/voiceflow-keyboard-android/releases/latest). Open the latest release, download the `voiceflow-keyboard-...-debug.apk` asset, then install it on your Android phone.
 
 This is a debug-signed prototype build for sideloading and testing. For production use, build and sign your own release APK.
 
@@ -26,7 +36,7 @@ Most mobile voice typing tools either insert raw dictation immediately or live i
 - insert the final result into the active text field,
 - let users bring their own API key and model choices.
 
-Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, Typeless alternative, AI dictation keyboard, OpenAI transcription keyboard, voice-to-text IME, prompt-based dictation cleanup.
+Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, Typeless alternative for Android, AI dictation keyboard, AI voice keyboard, OpenAI transcription keyboard, Grok transcription keyboard, Claude cleanup keyboard, offline voice typing Android, Parakeet offline transcription Android, Vosk offline keyboard, voice-to-text IME, prompt-based dictation cleanup, bring your own API key keyboard.
 
 ## Features
 
@@ -38,11 +48,12 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Grok/xAI speech-to-text and transform support.
 - Claude/Anthropic transform support.
 - Deepgram speech-to-text support.
-- Optional local offline transcription with Vosk.
+- Optional local offline transcription with compact Vosk or high-accuracy Parakeet via sherpa-onnx.
 - Automatic offline transcription fallback when a cloud voice provider is selected but the phone has no validated internet connection.
-- Settings control to download the offline fallback model before you need it.
+- Settings control to download the compact offline fallback model before you need it.
 - Optional transcript cleanup via configurable cloud transform providers.
 - Editable API keys, providers, transcription models, transform models, and cleanup prompts.
+- Combined provider/model pickers for voice input and text transform setup.
 - Transform profiles: Casual, Professional, and editable custom profiles.
 - Casual and Professional automatically use bullets or numbering when the transcript is clearly a list, steps, tasks, instructions, options, or grouped items.
 - Low-latency GPT-5 transform settings with safe fallback retry.
@@ -62,8 +73,9 @@ Known tradeoffs:
 - API keys are stored locally in app preferences. For production, migrate to encrypted storage.
 - Audio is sent to the configured transcription provider when using OpenAI transcription.
 - Realtime streaming transcription is not implemented yet. Cloud transcription records the full clip and uploads after stop.
-- Offline Vosk transcription downloads a local model on first use and runs the transcription on-device after recording stops.
-- Offline fallback requires the Vosk model to have been downloaded at least once while online. Use Settings > Voice input > Offline fallback to prepare it.
+- Offline Vosk transcription downloads a compact local model on first use and runs the transcription on-device after recording stops.
+- Offline Parakeet downloads a much larger local model, about 600 MB, on first use. It is intended as the higher-accuracy offline English option.
+- Offline fallback uses an installed Parakeet model first, then an installed Vosk model. Use Settings > Voice input > Offline fallback to prepare the compact Vosk fallback before you need it.
 - Autocorrect is intentionally conservative and much simpler than Gboard or Apple Keyboard.
 - The UI is tuned for a modern Samsung/Android phone but is not exhaustively tested across devices.
 
@@ -96,7 +108,14 @@ app/build/outputs/apk/debug/app-debug.apk
 
 Enable Developer Options and USB Debugging on your Android phone. On Samsung devices, you may also need to disable Auto Blocker for sideloading.
 
-If you downloaded an APK from Releases, install that APK. If you built from source, install the generated debug APK:
+If you downloaded an APK from Releases, install that APK:
+
+1. Go to [Releases](https://github.com/yutungh/voiceflow-keyboard-android/releases/latest).
+2. Download the APK asset named like `voiceflow-keyboard-vX.Y.Z-debug.apk`.
+3. On your phone, open the APK and allow install from that source if Android asks.
+4. Open **VoiceFlow Keyboard** from the app drawer.
+
+If you built from source, install the generated debug APK:
 
 Install:
 
@@ -108,8 +127,8 @@ Then:
 
 1. Open **VoiceFlow Keyboard**.
 2. Grant microphone permission.
-3. Add your OpenAI API key if using OpenAI transcription/cleanup.
-4. Choose your transcription and transform models.
+3. Add your provider API keys if using cloud transcription or cleanup.
+4. Choose your voice input model and transform model.
 5. Open Android keyboard settings and enable **VoiceFlow Keyboard**.
 6. Choose it from the keyboard picker.
 
@@ -153,8 +172,9 @@ Provider support:
 - Grok / xAI: transcription and transform.
 - Claude / Anthropic: transform only.
 - Deepgram: transcription only.
-- Offline Vosk: transcription only, with a local model downloaded on first use.
-- Offline fallback: when OpenAI, Grok / xAI, or Deepgram is selected for voice input and the phone has no validated internet connection, VoiceFlow records with Offline Vosk instead if the model is already installed.
+- Offline Parakeet: transcription only, high-accuracy English transcription through sherpa-onnx, with a large local model downloaded on first use.
+- Offline Vosk: transcription only, compact local fallback model downloaded on first use.
+- Offline fallback: when OpenAI, Grok / xAI, or Deepgram is selected for voice input and the phone has no validated internet connection, VoiceFlow records with installed Offline Parakeet first, then installed Offline Vosk.
 
 ## Transform Profiles
 
@@ -164,7 +184,7 @@ The default profile is **Casual**. It lightly cleans raw speech-to-text while pr
 
 Both built-in profiles can format content as bullets or numbered steps when that structure naturally fits. For example, grocery lists, task lists, instructions, recipes, options, and step-by-step workflows do not need a separate Bullets mode.
 
-The app also includes three editable custom profiles. Each custom profile has:
+You can add editable custom profiles. Each custom profile has:
 
 - editable display name,
 - editable prompt,
@@ -190,7 +210,7 @@ Current privacy model:
 - API keys are saved locally on the device in app preferences.
 - When a cloud transcription provider is enabled, recorded audio is sent to that provider after recording stops.
 - When transcript cleanup is enabled, transcript text is sent to the configured transform provider.
-- Offline Vosk transcription keeps audio local after its model has been downloaded.
+- Offline Vosk and Offline Parakeet transcription keep audio local after the selected local model has been downloaded.
 
 For a production release, you should:
 
@@ -208,7 +228,7 @@ For a production release, you should:
 - Undo last voice insert.
 - Per-field safety rules.
 - Better tablet/foldable layouts.
-- Optional local transcription model support.
+- More local transcription model options.
 - Release builds and signing instructions.
 
 ## Contributing

@@ -39,10 +39,6 @@
             android:windowSoftInputMode="adjustNothing" />
 
         <activity
-            android:name=".ProviderPickerActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".ModelPickerActivity"
             android:exported="false" />
 

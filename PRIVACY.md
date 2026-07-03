@@ -25,14 +25,14 @@ When transcript cleanup is enabled:
 - the transcript text is sent to the selected transform provider, such as OpenAI, Grok / xAI, or Claude / Anthropic,
 - the returned cleaned text is inserted into the active text field.
 
-When offline Vosk transcription is selected:
+When offline Vosk or offline Parakeet transcription is selected:
 
 - the app downloads a local speech model on first use,
 - audio is recorded locally while the microphone is active,
 - transcription runs on the device after recording stops,
 - transcript cleanup may still send text to a cloud transform provider if cleanup is enabled.
 
-If a cloud transcription provider is selected but the phone has no validated internet connection, the app falls back to offline Vosk transcription when the local model is already installed. In that case, the recorded audio is not sent to the cloud for transcription.
+If a cloud transcription provider is selected but the phone has no validated internet connection, the app falls back to an installed offline model. It uses offline Parakeet first when available, then offline Vosk. In that case, the recorded audio is not sent to the cloud for transcription.
 
 ## API Keys
 

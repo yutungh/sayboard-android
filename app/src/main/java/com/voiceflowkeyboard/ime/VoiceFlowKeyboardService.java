@@ -73,6 +73,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private boolean symbolsMoreMode;
     private boolean deleteHeld;
     private boolean offlineRecordingSession;
+    private String offlineRecordingProvider = Prefs.PROVIDER_OFFLINE_VOSK;
     private float downX;
     private long deleteHoldStartMs;
     private String selectedPreset;
@@ -1020,8 +1021,8 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             return;
         }
         String provider = Prefs.transcriptionProvider(this);
-        if (Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)) {
-            toggleOfflineRecording();
+        if (isOfflineTranscriptionProvider(provider)) {
+            toggleOfflineRecording(provider);
         } else if (!hasNetworkConnectivity()) {
             toggleOfflineFallbackRecording(provider);
         } else {
@@ -1039,11 +1040,12 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             openSettings();
             return;
         }
-        if (!OfflineVoskClient.isModelReady(this)) {
+        String fallbackProvider = installedOfflineFallbackProvider();
+        if (fallbackProvider == null) {
             setStatus("No connection. Connect once to download offline model.");
             return;
         }
-        startOfflineRecordingNow("Offline fallback from " + Prefs.providerLabel(selectedProvider));
+        startOfflineRecordingNow("Offline fallback from " + Prefs.providerLabel(selectedProvider), fallbackProvider);
     }
 
     private void toggleCloudRecording() {
@@ -1135,7 +1137,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                 && hasNetworkConnectivity();
     }
 
-    private void toggleOfflineRecording() {
+    private void toggleOfflineRecording(String provider) {
         if (recording) {
             stopOfflineRecordingAndTranscribe();
             return;
@@ -1145,32 +1147,32 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             openSettings();
             return;
         }
-        if (!OfflineVoskClient.isModelReady(this)) {
-            prepareOfflineModel();
+        if (!isOfflineModelReady(provider)) {
+            prepareOfflineModel(provider);
             return;
         }
-        startOfflineRecordingNow("Recording offline");
+        startOfflineRecordingNow("Recording offline", provider);
     }
 
-    private void prepareOfflineModel() {
+    private void prepareOfflineModel(String provider) {
         processing = true;
         setKeyboardLocked(true);
         micButton.setEnabled(false);
         setMicVisual(true, false);
-        startStatusSpinner("Downloading offline model");
+        startStatusSpinner("Downloading " + Prefs.providerLabel(provider));
         executor.execute(() -> {
             try {
-                OfflineVoskClient.ensureModel(this);
-                mainHandler.post(() -> finishProcessingState("Offline model ready. Tap mic to record."));
+                ensureOfflineModel(provider);
+                mainHandler.post(() -> finishProcessingState(Prefs.providerLabel(provider) + " ready. Tap mic to record."));
             } catch (Exception e) {
                 mainHandler.post(() -> finishProcessingState("Offline setup failed: " + concise(e)));
             }
         });
     }
 
-    private void startOfflineRecordingNow(String statusPrefix) {
+    private void startOfflineRecordingNow(String statusPrefix, String provider) {
         int minBuffer = AudioRecord.getMinBufferSize(
-                OfflineVoskClient.SAMPLE_RATE,
+                offlineSampleRate(provider),
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
         );
@@ -1178,13 +1180,13 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             setStatus("Offline recorder unavailable.");
             return;
         }
-        int bufferSize = Math.max(minBuffer, OfflineVoskClient.SAMPLE_RATE * 2);
+        int bufferSize = Math.max(minBuffer, offlineSampleRate(provider) * 2);
         selectedPreset = Prefs.activePreset(this);
         try {
             currentPcmFile = File.createTempFile("voiceflow-keyboard-", ".pcm", getCacheDir());
             offlineRecorder = new AudioRecord(
                     MediaRecorder.AudioSource.MIC,
-                    OfflineVoskClient.SAMPLE_RATE,
+                    offlineSampleRate(provider),
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,
                     bufferSize
@@ -1205,6 +1207,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             offlineRecordThread.start();
             recording = true;
             offlineRecordingSession = true;
+            offlineRecordingProvider = provider;
             setMicVisual(true, true);
             setKeyboardLocked(true);
             showRecordingChips();
@@ -1244,9 +1247,10 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         setMicVisual(true, false);
         startStatusSpinner("Transcribing offline");
         String presetForThisRecording = selectedPreset;
+        String providerForThisRecording = offlineRecordingProvider;
         executor.execute(() -> {
             try {
-                String transcript = OfflineVoskClient.transcribePcm(this, pcm);
+                String transcript = transcribeOfflinePcm(providerForThisRecording, pcm);
                 String finalText = transcript;
                 String finalStatus = "Inserted";
                 if (shouldTransform(presetForThisRecording)) {
@@ -1315,6 +1319,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         }
         recording = false;
         offlineRecordingSession = false;
+        offlineRecordingProvider = Prefs.PROVIDER_OFFLINE_VOSK;
         currentAudioFile = null;
     }
 
@@ -1340,6 +1345,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         }
         recording = false;
         offlineRecordingSession = false;
+        offlineRecordingProvider = Prefs.PROVIDER_OFFLINE_VOSK;
         currentPcmFile = null;
     }
 
@@ -1378,6 +1384,50 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private boolean hasAudioPermission() {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
                 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean isOfflineTranscriptionProvider(String provider) {
+        return Prefs.PROVIDER_OFFLINE_VOSK.equals(provider)
+                || Prefs.PROVIDER_OFFLINE_PARAKEET.equals(provider);
+    }
+
+    private String installedOfflineFallbackProvider() {
+        if (OfflineParakeetClient.isModelReady(this)) {
+            return Prefs.PROVIDER_OFFLINE_PARAKEET;
+        }
+        if (OfflineVoskClient.isModelReady(this)) {
+            return Prefs.PROVIDER_OFFLINE_VOSK;
+        }
+        return null;
+    }
+
+    private boolean isOfflineModelReady(String provider) {
+        if (Prefs.PROVIDER_OFFLINE_PARAKEET.equals(provider)) {
+            return OfflineParakeetClient.isModelReady(this);
+        }
+        return OfflineVoskClient.isModelReady(this);
+    }
+
+    private void ensureOfflineModel(String provider) throws Exception {
+        if (Prefs.PROVIDER_OFFLINE_PARAKEET.equals(provider)) {
+            OfflineParakeetClient.ensureModel(this);
+        } else {
+            OfflineVoskClient.ensureModel(this);
+        }
+    }
+
+    private String transcribeOfflinePcm(String provider, File pcm) throws Exception {
+        if (Prefs.PROVIDER_OFFLINE_PARAKEET.equals(provider)) {
+            return OfflineParakeetClient.transcribePcm(this, pcm);
+        }
+        return OfflineVoskClient.transcribePcm(this, pcm);
+    }
+
+    private int offlineSampleRate(String provider) {
+        if (Prefs.PROVIDER_OFFLINE_PARAKEET.equals(provider)) {
+            return OfflineParakeetClient.SAMPLE_RATE;
+        }
+        return OfflineVoskClient.SAMPLE_RATE;
     }
 
     private boolean hasNetworkConnectivity() {

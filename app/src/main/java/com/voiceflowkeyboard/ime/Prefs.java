@@ -17,6 +17,7 @@ final class Prefs {
     static final String PROVIDER_XAI = "xai";
     static final String PROVIDER_DEEPGRAM = "deepgram";
     static final String PROVIDER_OFFLINE_VOSK = "offline_vosk";
+    static final String PROVIDER_OFFLINE_PARAKEET = "offline_parakeet";
 
     static final String PRESET_RAW = "raw";
     static final String PRESET_CASUAL = "casual";
@@ -362,6 +363,9 @@ final class Prefs {
         if (PROVIDER_OFFLINE_VOSK.equals(provider)) {
             return "Offline Vosk";
         }
+        if (PROVIDER_OFFLINE_PARAKEET.equals(provider)) {
+            return "Offline Parakeet";
+        }
         return "OpenAI";
     }
 
@@ -375,14 +379,16 @@ final class Prefs {
         if (PROVIDER_DEEPGRAM.equals(provider)) {
             return deepgramApiKey(context);
         }
-        if (PROVIDER_OFFLINE_VOSK.equals(provider)) {
+        if (PROVIDER_OFFLINE_VOSK.equals(provider) || PROVIDER_OFFLINE_PARAKEET.equals(provider)) {
             return "";
         }
         return openAiApiKey(context);
     }
 
     static boolean hasApiKeyForProvider(Context context, String provider) {
-        return PROVIDER_OFFLINE_VOSK.equals(provider) || !trim(apiKeyForProvider(context, provider)).isEmpty();
+        return PROVIDER_OFFLINE_VOSK.equals(provider)
+                || PROVIDER_OFFLINE_PARAKEET.equals(provider)
+                || !trim(apiKeyForProvider(context, provider)).isEmpty();
     }
 
     static String defaultTranscriptionModel(String provider) {
@@ -395,6 +401,9 @@ final class Prefs {
         }
         if (PROVIDER_OFFLINE_VOSK.equals(sanitized)) {
             return "vosk-model-small-en-us-0.15";
+        }
+        if (PROVIDER_OFFLINE_PARAKEET.equals(sanitized)) {
+            return "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
         }
         return "gpt-4o-transcribe";
     }
@@ -414,7 +423,8 @@ final class Prefs {
         return PROVIDER_OPENAI.equals(provider)
                 || PROVIDER_XAI.equals(provider)
                 || PROVIDER_DEEPGRAM.equals(provider)
-                || PROVIDER_OFFLINE_VOSK.equals(provider);
+                || PROVIDER_OFFLINE_VOSK.equals(provider)
+                || PROVIDER_OFFLINE_PARAKEET.equals(provider);
     }
 
     static boolean supportsTransform(String provider) {
@@ -427,6 +437,7 @@ final class Prefs {
         if (PROVIDER_XAI.equals(provider)
                 || PROVIDER_DEEPGRAM.equals(provider)
                 || PROVIDER_OFFLINE_VOSK.equals(provider)
+                || PROVIDER_OFFLINE_PARAKEET.equals(provider)
                 || PROVIDER_OPENAI.equals(provider)) {
             return provider;
         }

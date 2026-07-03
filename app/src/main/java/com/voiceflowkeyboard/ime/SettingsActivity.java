@@ -24,16 +24,9 @@ import android.widget.Toast;
 import java.util.List;
 
 public class SettingsActivity extends Activity {
-    private TextView providerValue;
-    private TextView transformProviderValue;
-    private TextView transcriptionModelValue;
-    private TextView transformModelValue;
     private TextView offlineFallbackValue;
     private TextView activeProfileValue;
     private CheckBox transformEnabledInput;
-    private CheckBox showAllModelsInput;
-    private String selectedProvider;
-    private String selectedTransformProvider;
     private String selectedPreset;
     private boolean created;
     private boolean downloadingOfflineModel;
@@ -57,8 +50,6 @@ public class SettingsActivity extends Activity {
     }
 
     private View buildContent() {
-        selectedProvider = Prefs.transcriptionProvider(this);
-        selectedTransformProvider = Prefs.transformProvider(this);
         selectedPreset = Prefs.activePreset(this);
 
         ScrollView scroll = new ScrollView(this);
@@ -77,11 +68,7 @@ public class SettingsActivity extends Activity {
         setup.addView(row("Active keyboard", activeKeyboardSummary(), ">", v -> showInputMethodPicker()));
 
         LinearLayout voice = section(root, "Voice input");
-        providerValue = rowValue(Prefs.providerLabel(selectedProvider));
-        voice.addView(row("Provider", providerValue, ">", v -> openProviderPicker(true)));
-        voice.addView(divider());
-        transcriptionModelValue = rowValue(Prefs.transcriptionModel(this));
-        voice.addView(row("Transcription model", transcriptionModelValue, ">", v -> openModelPicker(true)));
+        voice.addView(row("Voice model", modelSelectionSummary(true), ">", v -> openModelPicker(true)));
         voice.addView(divider());
         offlineFallbackValue = rowValue(offlineFallbackSummary());
         voice.addView(row("Offline fallback", offlineFallbackValue, ">", v -> prepareOfflineFallbackModel()));
@@ -91,11 +78,7 @@ public class SettingsActivity extends Activity {
         transformEnabledInput.setChecked(Prefs.enableTransform(this));
         transform.addView(checkboxRow("Transform transcript", transformEnabledInput, this::saveCurrentSettings));
         transform.addView(divider());
-        transformProviderValue = rowValue(Prefs.providerLabel(selectedTransformProvider));
-        transform.addView(row("Provider", transformProviderValue, ">", v -> openProviderPicker(false)));
-        transform.addView(divider());
-        transformModelValue = rowValue(Prefs.transformModel(this));
-        transform.addView(row("Transform model", transformModelValue, ">", v -> openModelPicker(false)));
+        transform.addView(row("Transform model", modelSelectionSummary(false), ">", v -> openModelPicker(false)));
         transform.addView(divider());
         activeProfileValue = rowValue(Prefs.labelForPreset(this, selectedPreset));
         transform.addView(row("Default profile", activeProfileValue, ">", v -> showProfileDialog()));
@@ -113,11 +96,6 @@ public class SettingsActivity extends Activity {
         replacements.addView(row("Personal replacements", replacementSummary(), ">", v -> startActivity(new Intent(this, FindReplaceActivity.class))));
 
         LinearLayout advanced = section(root, "Advanced");
-        showAllModelsInput = new CheckBox(this);
-        showAllModelsInput.setChecked(Prefs.showAllOpenAiModels(this));
-        advanced.addView(checkboxRow("Show all provider models", showAllModelsInput,
-                () -> Prefs.setShowAllOpenAiModels(this, showAllModelsInput.isChecked())));
-        advanced.addView(divider());
         advanced.addView(row("Keyboard test", "Open test field", ">", v -> startActivity(new Intent(this, KeyboardTestActivity.class))));
         advanced.addView(divider());
         advanced.addView(row("Android keyboard settings", "System settings", ">", v -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))));
@@ -185,6 +163,12 @@ public class SettingsActivity extends Activity {
         params.setMargins(0, 0, 0, dp(2));
         root.addView(section, params);
         return section;
+    }
+
+    private String modelSelectionSummary(boolean transcription) {
+        String provider = transcription ? Prefs.transcriptionProvider(this) : Prefs.transformProvider(this);
+        String model = transcription ? Prefs.transcriptionModel(this) : Prefs.transformModel(this);
+        return Prefs.providerLabel(provider) + " - " + model;
     }
 
     private View row(String title, String value, String accessory, View.OnClickListener listener) {
@@ -256,12 +240,6 @@ public class SettingsActivity extends Activity {
         return divider;
     }
 
-    private void openProviderPicker(boolean transcription) {
-        Intent intent = new Intent(this, ProviderPickerActivity.class);
-        intent.putExtra(ProviderPickerActivity.EXTRA_MODE, transcription ? ProviderPickerActivity.MODE_TRANSCRIPTION : ProviderPickerActivity.MODE_TRANSFORM);
-        startActivity(intent);
-    }
-
     private void openModelPicker(boolean transcription) {
         Intent intent = new Intent(this, ModelPickerActivity.class);
         intent.putExtra(ModelPickerActivity.EXTRA_MODE, transcription ? ModelPickerActivity.MODE_TRANSCRIPTION : ModelPickerActivity.MODE_TRANSFORM);
@@ -285,10 +263,10 @@ public class SettingsActivity extends Activity {
         Prefs.save(
                 this,
                 Prefs.openAiApiKey(this),
-                selectedProvider,
-                selectedTransformProvider,
-                transcriptionModelValue.getText().toString(),
-                transformModelValue.getText().toString(),
+                Prefs.transcriptionProvider(this),
+                Prefs.transformProvider(this),
+                Prefs.transcriptionModel(this),
+                Prefs.transformModel(this),
                 transformEnabledInput.isChecked(),
                 selectedPreset
         );
@@ -331,15 +309,18 @@ public class SettingsActivity extends Activity {
     }
 
     private String offlineFallbackSummary() {
-        if (OfflineVoskClient.isModelReady(this)) {
-            return "Ready";
+        if (OfflineParakeetClient.isModelReady(this)) {
+            return "Parakeet ready";
         }
-        return downloadingOfflineModel ? "Downloading..." : "Download local model";
+        if (OfflineVoskClient.isModelReady(this)) {
+            return "Vosk ready";
+        }
+        return downloadingOfflineModel ? "Downloading..." : "Download compact fallback";
     }
 
     private void prepareOfflineFallbackModel() {
-        if (OfflineVoskClient.isModelReady(this)) {
-            Toast.makeText(this, "Offline fallback is ready", Toast.LENGTH_SHORT).show();
+        if (OfflineParakeetClient.isModelReady(this) || OfflineVoskClient.isModelReady(this)) {
+            Toast.makeText(this, offlineFallbackSummary(), Toast.LENGTH_SHORT).show();
             return;
         }
         if (downloadingOfflineModel) {
@@ -355,7 +336,7 @@ public class SettingsActivity extends Activity {
                 runOnUiThread(() -> {
                     downloadingOfflineModel = false;
                     if (offlineFallbackValue != null) {
-                        offlineFallbackValue.setText("Ready");
+                        offlineFallbackValue.setText(offlineFallbackSummary());
                     }
                     Toast.makeText(this, "Offline fallback is ready", Toast.LENGTH_SHORT).show();
                 });
@@ -364,7 +345,7 @@ public class SettingsActivity extends Activity {
                 runOnUiThread(() -> {
                     downloadingOfflineModel = false;
                     if (offlineFallbackValue != null) {
-                        offlineFallbackValue.setText("Download local model");
+                        offlineFallbackValue.setText(offlineFallbackSummary());
                     }
                     new AlertDialog.Builder(this)
                             .setTitle("Offline fallback")
