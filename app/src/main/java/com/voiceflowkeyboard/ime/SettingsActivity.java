@@ -135,6 +135,10 @@ public class SettingsActivity extends Activity {
         });
         root.addView(picker);
 
+        Button test = button("Open keyboard test");
+        test.setOnClickListener(v -> startActivity(new Intent(this, KeyboardTestActivity.class)));
+        root.addView(test);
+
         root.addView(text("OpenAI audio records the whole clip, then transcribes and formats it after you stop. Android speech is available as a fallback but uses the device speech recognizer.", 13, false));
         return scroll;
     }
