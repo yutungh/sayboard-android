@@ -52,10 +52,15 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Automatic offline transcription fallback when a cloud voice provider is selected but the phone has no validated internet connection.
 - Settings control to download the compact offline fallback model before you need it.
 - Optional transcript cleanup via configurable cloud transform providers.
-- Editable API keys, providers, transcription models, transform models, and cleanup prompts.
+- Editable API keys, providers, transcription models, transform models, and voice styles.
 - Combined provider/model pickers for voice input and text transform setup.
-- Transform profiles: Casual, Professional, and editable custom profiles.
-- Casual and Professional automatically use bullets or numbering when the transcript is clearly a list, steps, tasks, instructions, options, or grouped items.
+- Voice styles: Friends and Work by default, optional Family and Partner templates, and editable custom styles.
+- A mutually exclusive style picker replaces the disabled keys while dictation or translation is recording.
+- A five-step expression control (`Reserved` through `Expressive`) adjusts conversational energy, punctuation, and permitted emoji use independently for each voice style.
+- Voice styles apply to both transcript cleanup and natural target-language localization; voice instruction mode remains independent.
+- Friends and Work automatically use bullets or numbering when the transcript is clearly a list, steps, tasks, instructions, options, or grouped items.
+- Translation history remembers the target language and generated style variants for comparison or reuse.
+- Retone can regenerate the last inserted dictation or translation from its original transcript, safely replace it when the field is unchanged, and keep alternate style/expression versions together in history.
 - Low-latency GPT-5 transform settings with safe fallback retry.
 - Minimal autocorrect layer using Android spell checker suggestions when available.
 - Custom phrase replacement example: `Cloud Code` -> `Claude Code`.
@@ -176,18 +181,23 @@ Provider support:
 - Offline Vosk: transcription only, compact local fallback model downloaded on first use.
 - Offline fallback: when OpenAI, Grok / xAI, or Deepgram is selected for voice input and the phone has no validated internet connection, VoiceFlow records with installed Offline Parakeet first, then installed Offline Vosk.
 
-## Transform Profiles
+## Voice Styles
 
-The default profile is **Casual**. It lightly cleans raw speech-to-text while preserving wording, tone, intent, hedging, and order. It is designed for rambling thoughts, quick replies, notes, and normal dictation.
+The default public styles are **Friends** and **Work**.
 
-**Professional** rewrites the transcript into clearer, more polished professional text while preserving meaning and factual content.
+**Friends** lightly cleans raw speech-to-text while preserving wording, tone, intent, hedging, slang, and order. **Work** rewrites the transcript into clearer, more polished professional text while preserving meaning and factual content.
 
-Both built-in profiles can format content as bullets or numbered steps when that structure naturally fits. For example, grocery lists, task lists, instructions, recipes, options, and step-by-step workflows do not need a separate Bullets mode.
+Optional **Family** and **Partner** templates add recipient-aware warmth without inventing nicknames, facts, or emotions. Partner can permit a single fitting affectionate emoji when the message itself supports it. These templates are available from Settings but are not enabled in the public build by default.
 
-You can add editable custom profiles. Each custom profile has:
+While normal dictation or translation is recording, the disabled keyboard is covered by a single-select voice-style panel. The selected style can be changed before stopping and is applied in the same transform request, so it does not add another processing step. Voice instruction mode is excluded.
+
+Built-in styles can format content as bullets or numbered steps when that structure naturally fits. For example, grocery lists, task lists, instructions, recipes, options, and step-by-step workflows do not need a separate Bullets mode.
+
+You can add editable custom styles. Each style has:
 
 - editable display name,
-- editable prompt,
+- editable dictation behavior,
+- editable translation tone guidance,
 - the same one-tap recording flow as the built-in profiles.
 
 This makes the project useful as a base for:

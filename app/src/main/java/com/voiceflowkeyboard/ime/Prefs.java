@@ -8,7 +8,13 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 final class Prefs {
@@ -22,6 +28,14 @@ final class Prefs {
     static final String PRESET_RAW = "raw";
     static final String PRESET_CASUAL = "casual";
     static final String PRESET_BUSINESS = "business";
+    static final String PRESET_FAMILY = "family";
+    static final String PRESET_PARTNER = "partner";
+    static final int EXPRESSION_RESERVED = 0;
+    static final int EXPRESSION_SUBTLE = 1;
+    static final int EXPRESSION_NATURAL = 2;
+    static final int EXPRESSION_LIVELY = 3;
+    static final int EXPRESSION_EXPRESSIVE = 4;
+    static final int DEFAULT_EXPRESSION = EXPRESSION_NATURAL;
     private static final String PRESET_PROFESSIONAL = "professional";
 
     private static final String FILE = "voiceflow_keyboard_settings";
@@ -36,11 +50,19 @@ final class Prefs {
     private static final String KEY_FAST_TRANSFORM_DEFAULT_MIGRATED = "fast_transform_default_migrated";
     private static final String KEY_SHOW_ALL_OPENAI_MODELS = "show_all_openai_models";
     private static final String KEY_ENABLE_TRANSFORM = "enable_transform";
+    private static final String KEY_TRANSLATION_ENABLED = "translation_enabled";
+    private static final String KEY_TRANSLATION_TARGET_LANGUAGE = "translation_target_language";
     private static final String KEY_ACTIVE_PRESET = "active_preset";
     private static final String KEY_PROMPTS_JSON = "prompts_json";
     private static final String KEY_REPLACEMENTS_JSON = "replacements_json";
+    private static final String KEY_LEARNED_WORDS = "learned_words";
+    private static final String KEY_TRANSCRIPT_HISTORY_JSON = "transcript_history_json";
     private static final String KEY_PROMPT_PREFIX = "prompt_";
+    private static final String KEY_STYLE_GUIDANCE_PREFIX = "style_guidance_";
+    private static final String KEY_EXPRESSION_PREFIX = "expression_";
     private static final String KEY_PRESET_LABEL_PREFIX = "preset_label_";
+    private static final int MAX_TRANSCRIPT_HISTORY = 20;
+    private static final String DEFAULT_OPENAI_TRANSFORM_MODEL = "gpt-5.4-mini";
 
     private Prefs() {
     }
@@ -133,17 +155,21 @@ final class Prefs {
         if (!PROVIDER_OPENAI.equals(provider)) {
             return prefs.getString(KEY_TRANSFORM_MODEL, defaultTransformModel(provider));
         }
+        String stored = trim(prefs.getString(KEY_TRANSFORM_MODEL, ""));
+        if ("gpt-5.5-mini".equalsIgnoreCase(stored)) {
+            prefs.edit().putString(KEY_TRANSFORM_MODEL, DEFAULT_OPENAI_TRANSFORM_MODEL).apply();
+            return DEFAULT_OPENAI_TRANSFORM_MODEL;
+        }
         if (!prefs.getBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, false)) {
-            String stored = prefs.getString(KEY_TRANSFORM_MODEL, "");
-            if (stored == null || stored.trim().isEmpty() || "gpt-5.5".equals(stored.trim())) {
+            if (stored.isEmpty() || "gpt-5.5".equals(stored)) {
                 prefs.edit()
-                        .putString(KEY_TRANSFORM_MODEL, "gpt-5.5-mini")
+                        .putString(KEY_TRANSFORM_MODEL, DEFAULT_OPENAI_TRANSFORM_MODEL)
                         .putBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, true)
                         .apply();
-                return "gpt-5.5-mini";
+                return DEFAULT_OPENAI_TRANSFORM_MODEL;
             }
             prefs.edit().putBoolean(KEY_FAST_TRANSFORM_DEFAULT_MIGRATED, true).apply();
-            return stored.trim();
+            return stored;
         }
         return prefs.getString(KEY_TRANSFORM_MODEL, defaultTransformModel(PROVIDER_OPENAI));
     }
@@ -176,6 +202,113 @@ final class Prefs {
         return shared(context).getString(KEY_PROMPT_PREFIX + sanitized, defaultPromptForPreset(sanitized));
     }
 
+    static String promptForPreset(Context context, String preset, int expression) {
+        String prompt = promptForPreset(context, preset);
+        if (PRESET_RAW.equals(preset)) {
+            return prompt;
+        }
+        return prompt + "\n\nSelected expression level: " + expressionLabel(expression) + "\n"
+                + expressionGuidance(preset, expression);
+    }
+
+    static int expressionForPreset(Context context, String preset) {
+        String sanitized = sanitizeSelectablePreset(preset);
+        return sanitizeExpression(shared(context).getInt(KEY_EXPRESSION_PREFIX + sanitized, DEFAULT_EXPRESSION));
+    }
+
+    static void setExpressionForPreset(Context context, String preset, int expression) {
+        String sanitized = sanitizeSelectablePreset(preset);
+        shared(context).edit()
+                .putInt(KEY_EXPRESSION_PREFIX + sanitized, sanitizeExpression(expression))
+                .apply();
+    }
+
+    static int sanitizeExpression(int expression) {
+        return Math.max(EXPRESSION_RESERVED, Math.min(EXPRESSION_EXPRESSIVE, expression));
+    }
+
+    static String expressionLabel(int expression) {
+        switch (sanitizeExpression(expression)) {
+            case EXPRESSION_RESERVED:
+                return "Reserved";
+            case EXPRESSION_SUBTLE:
+                return "Subtle";
+            case EXPRESSION_LIVELY:
+                return "Lively";
+            case EXPRESSION_EXPRESSIVE:
+                return "Expressive";
+            default:
+                return "Natural";
+        }
+    }
+
+    static String expressionGuidance(String preset, int expression) {
+        String sanitizedPreset = sanitizeSelectablePreset(preset);
+        int sanitizedExpression = sanitizeExpression(expression);
+        String base;
+        switch (sanitizedExpression) {
+            case EXPRESSION_RESERVED:
+                base = "Use restrained punctuation and low emotional intensity. Do not add emojis, exclamation marks, or playful emphasis.";
+                break;
+            case EXPRESSION_SUBTLE:
+                base = "Keep the delivery low-key and lightly conversational. Do not add emojis or extra enthusiasm.";
+                break;
+            case EXPRESSION_LIVELY:
+                base = "Make the delivery animated and conversational with natural punctuation. You may add one fitting emoji only when the message already supports that emotion.";
+                break;
+            case EXPRESSION_EXPRESSIVE:
+                base = "Use energetic, playful delivery and expressive punctuation when the message supports it. You may add up to two fitting emojis, but never manufacture affection, excitement, or sentiment.";
+                break;
+            default:
+                base = "Match the speaker's natural conversational energy. Add at most one fitting emoji only when the selected voice style permits it and the message clearly supports it.";
+                break;
+        }
+        if (PRESET_PARTNER.equals(sanitizedPreset) && sanitizedExpression == EXPRESSION_EXPRESSIVE) {
+            base = "Make an already affectionate or playful message feel unmistakably intimate, enthusiastic, and text-message-like for the speaker's spouse. "
+                    + "Actively use fitting partner-text conventions such as emphatic punctuation, playful repeated tildes, a text heart such as <3, or one or two affectionate emojis when the source already expresses that warmth. "
+                    + "For example, the energy may resemble 'Love you!~~ <3' in English or '爱你哦～～❤️' in natural Simplified Chinese. "
+                    + "Adapt these conventions naturally to the target language instead of copying the examples. Never add affection, excitement, pet names, hearts, emojis, or playful punctuation to neutral logistics, conflict, bad news, or serious content.";
+        } else if (PRESET_PARTNER.equals(sanitizedPreset) && sanitizedExpression == EXPRESSION_LIVELY) {
+            base += " For an affectionate spouse message, favor warm partner-text energy and one natural heart or affectionate marker when it fits.";
+        }
+        if (PRESET_BUSINESS.equals(sanitizedPreset)) {
+            base += " Because this is the Work style, do not add emojis or exaggerated punctuation at any expression level.";
+        }
+        return base + " This setting controls presentation only: never change facts, intent, certainty, sentiment, relationship, or the speaker's underlying emotion.";
+    }
+
+    static String historyVariantKey(String preset, int expression) {
+        String sanitized = sanitizeHistoryPreset(preset);
+        if (PRESET_RAW.equals(sanitized)) {
+            return PRESET_RAW;
+        }
+        return sanitized + "@e" + sanitizeExpression(expression);
+    }
+
+    static String historyVariantPreset(String variantKey) {
+        if (variantKey == null || PRESET_RAW.equals(variantKey)) {
+            return PRESET_RAW;
+        }
+        int marker = variantKey.lastIndexOf("@e");
+        String preset = marker > 0 ? variantKey.substring(0, marker) : variantKey;
+        return sanitizeHistoryPreset(preset);
+    }
+
+    static int historyVariantExpression(String variantKey) {
+        if (variantKey == null || PRESET_RAW.equals(variantKey)) {
+            return DEFAULT_EXPRESSION;
+        }
+        int marker = variantKey.lastIndexOf("@e");
+        if (marker < 0 || marker + 2 >= variantKey.length()) {
+            return DEFAULT_EXPRESSION;
+        }
+        try {
+            return sanitizeExpression(Integer.parseInt(variantKey.substring(marker + 2)));
+        } catch (NumberFormatException ignored) {
+            return DEFAULT_EXPRESSION;
+        }
+    }
+
     static String labelForPreset(Context context, String preset) {
         String sanitized = sanitizeSelectablePreset(preset);
         for (PromptProfile profile : promptProfiles(context)) {
@@ -206,8 +339,8 @@ final class Prefs {
     static List<PromptProfile> promptProfiles(Context context) {
         List<PromptProfile> profiles = readPromptProfiles(context);
         if (profiles.isEmpty()) {
-            profiles.add(new PromptProfile(PRESET_CASUAL, "Casual"));
-            profiles.add(new PromptProfile(PRESET_BUSINESS, "Professional"));
+            profiles.add(new PromptProfile(PRESET_CASUAL, "Friends"));
+            profiles.add(new PromptProfile(PRESET_BUSINESS, "Work"));
         }
         return profiles;
     }
@@ -219,13 +352,37 @@ final class Prefs {
                 return profile;
             }
         }
-        return new PromptProfile(PRESET_CASUAL, "Casual");
+        return new PromptProfile(PRESET_CASUAL, "Friends");
+    }
+
+    static List<PromptProfile> hiddenVoiceStyleTemplates(Context context) {
+        List<PromptProfile> active = promptProfiles(context);
+        List<PromptProfile> hidden = new ArrayList<>();
+        if (!containsProfile(active, PRESET_FAMILY)) {
+            hidden.add(new PromptProfile(PRESET_FAMILY, "Family"));
+        }
+        if (!containsProfile(active, PRESET_PARTNER)) {
+            hidden.add(new PromptProfile(PRESET_PARTNER, "Partner"));
+        }
+        return hidden;
+    }
+
+    static void addVoiceStyleTemplate(Context context, String id) {
+        String sanitized = sanitizeSelectablePreset(id);
+        if (!PRESET_FAMILY.equals(sanitized) && !PRESET_PARTNER.equals(sanitized)) {
+            return;
+        }
+        List<PromptProfile> profiles = promptProfiles(context);
+        if (!containsProfile(profiles, sanitized)) {
+            profiles.add(new PromptProfile(sanitized, defaultLabelForPreset(sanitized)));
+            writePromptProfiles(context, profiles);
+        }
     }
 
     static String addPromptProfile(Context context, String name) {
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) {
-            trimmed = "New prompt";
+            trimmed = "New voice style";
         }
         String id = "custom_" + UUID.randomUUID().toString().replace("-", "");
         List<PromptProfile> profiles = promptProfiles(context);
@@ -235,7 +392,7 @@ final class Prefs {
         return id;
     }
 
-    static void savePromptProfile(Context context, String id, String name, String prompt) {
+    static void savePromptProfile(Context context, String id, String name, String prompt, String styleGuidance) {
         String sanitized = sanitizeEditablePreset(id);
         List<PromptProfile> profiles = promptProfiles(context);
         for (int i = 0; i < profiles.size(); i++) {
@@ -246,7 +403,23 @@ final class Prefs {
             }
         }
         writePromptProfiles(context, profiles);
-        shared(context).edit().putString(KEY_PROMPT_PREFIX + sanitized, prompt == null ? "" : prompt.trim()).apply();
+        shared(context).edit()
+                .putString(KEY_PROMPT_PREFIX + sanitized, prompt == null ? "" : prompt.trim())
+                .putString(KEY_STYLE_GUIDANCE_PREFIX + sanitized, styleGuidance == null ? "" : styleGuidance.trim())
+                .apply();
+    }
+
+    static String styleGuidanceForPreset(Context context, String preset) {
+        String sanitized = sanitizeEditablePreset(preset);
+        return shared(context).getString(
+                KEY_STYLE_GUIDANCE_PREFIX + sanitized,
+                defaultStyleGuidance(sanitized)
+        );
+    }
+
+    static boolean isRelationshipStyle(String id) {
+        String sanitized = sanitizeEditablePreset(id);
+        return PRESET_FAMILY.equals(sanitized) || PRESET_PARTNER.equals(sanitized);
     }
 
     static boolean canDeletePromptProfile(String id) {
@@ -266,8 +439,11 @@ final class Prefs {
                 kept.add(profile);
             }
         }
-        SharedPreferences.Editor editor = shared(context).edit()
-                .remove(KEY_PROMPT_PREFIX + sanitized);
+        SharedPreferences.Editor editor = shared(context).edit();
+        if (!isRelationshipStyle(sanitized)) {
+            editor.remove(KEY_PROMPT_PREFIX + sanitized)
+                    .remove(KEY_STYLE_GUIDANCE_PREFIX + sanitized);
+        }
         if (sanitized.equals(activePreset(context))) {
             editor.putString(KEY_ACTIVE_PRESET, PRESET_CASUAL);
         }
@@ -277,6 +453,51 @@ final class Prefs {
 
     static boolean enableTransform(Context context) {
         return shared(context).getBoolean(KEY_ENABLE_TRANSFORM, true);
+    }
+
+    static boolean translationEnabled(Context context) {
+        return shared(context).getBoolean(KEY_TRANSLATION_ENABLED, false);
+    }
+
+    static void setTranslationEnabled(Context context, boolean enabled) {
+        shared(context).edit().putBoolean(KEY_TRANSLATION_ENABLED, enabled).apply();
+    }
+
+    static String translationTargetLanguage(Context context) {
+        String stored = shared(context).getString(KEY_TRANSLATION_TARGET_LANGUAGE, "Chinese (Simplified)");
+        for (String language : translationLanguages()) {
+            if (language.equals(stored)) {
+                return language;
+            }
+        }
+        return "Chinese (Simplified)";
+    }
+
+    static void setTranslationTargetLanguage(Context context, String language) {
+        String selected = "Chinese (Simplified)";
+        for (String candidate : translationLanguages()) {
+            if (candidate.equals(language)) {
+                selected = candidate;
+                break;
+            }
+        }
+        shared(context).edit().putString(KEY_TRANSLATION_TARGET_LANGUAGE, selected).apply();
+    }
+
+    static String[] translationLanguages() {
+        return new String[]{
+                "Chinese (Simplified)",
+                "Chinese (Traditional)",
+                "Spanish",
+                "French",
+                "German",
+                "Japanese",
+                "Korean",
+                "Portuguese (Brazil)",
+                "Italian",
+                "Arabic",
+                "Hindi"
+        };
     }
 
     static void save(
@@ -316,9 +537,18 @@ final class Prefs {
 
     static String defaultLabelForPreset(String preset) {
         if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
-            return "Professional";
+            return "Work";
         }
-        return "Casual";
+        if (PRESET_FAMILY.equals(preset)) {
+            return "Family";
+        }
+        if (PRESET_PARTNER.equals(preset)) {
+            return "Partner";
+        }
+        if (preset != null && preset.startsWith("custom_")) {
+            return "Custom";
+        }
+        return "Friends";
     }
 
     static String defaultPromptForPreset(String preset) {
@@ -331,7 +561,33 @@ final class Prefs {
         if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
             return businessPrompt();
         }
+        if (PRESET_FAMILY.equals(preset) || PRESET_PARTNER.equals(preset)) {
+            return relationshipPrompt(defaultStyleGuidance(preset));
+        }
         return customPrompt();
+    }
+
+    private static String defaultStyleGuidance(String preset) {
+        if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
+            return "Write for a coworker or professional contact. Keep the message clear, polished, concise, and natural. "
+                    + "Use an appropriately professional level of formality. Do not add emojis, slang, greetings, or sign-offs unless the speaker included them.";
+        }
+        if (PRESET_FAMILY.equals(preset)) {
+            return "Write for a close family member. Sound warm, familiar, relaxed, and naturally conversational rather than formal or robotic. "
+                    + "Preserve family terms, nicknames, humor, and affection that the speaker actually used. Follow the selected expression guidance for punctuation and emoji use. "
+                    + "Do not invent nicknames, emotion, slang, or affection.";
+        }
+        if (PRESET_PARTNER.equals(preset)) {
+            return "Write for the speaker's spouse or romantic partner. Sound intimate, affectionate, relaxed, and naturally conversational. "
+                    + "Preserve pet names and nicknames exactly when dictated. Use culturally natural affectionate phrasing rather than literal wording when translating. "
+                    + "Follow the selected expression guidance for punctuation and emoji use, but never add an affectionate emoji to neutral logistics, conflict, or serious content. "
+                    + "Never invent a pet name, promise, emotion, or level of affection.";
+        }
+        if (preset != null && preset.startsWith("custom_")) {
+            return "Follow this voice style's name and the speaker's wording. Keep the result natural for the intended recipient without adding facts, emotion, nicknames, or emojis that were not requested.";
+        }
+        return "Write for a friend. Sound relaxed, conversational, and natural. Preserve the speaker's slang, humor, contractions, and level of enthusiasm. "
+                + "Follow the selected expression guidance for punctuation and emoji use. Do not make the message formal or invent slang, affection, emotion, or enthusiasm.";
     }
 
     private static String sanitizeSelectablePreset(String preset) {
@@ -344,7 +600,10 @@ final class Prefs {
         if (preset.startsWith("custom_")) {
             return preset;
         }
-        if (PRESET_BUSINESS.equals(preset) || PRESET_CASUAL.equals(preset)) {
+        if (PRESET_BUSINESS.equals(preset)
+                || PRESET_CASUAL.equals(preset)
+                || PRESET_FAMILY.equals(preset)
+                || PRESET_PARTNER.equals(preset)) {
             return preset;
         }
         return PRESET_CASUAL;
@@ -416,7 +675,7 @@ final class Prefs {
         if (PROVIDER_XAI.equals(sanitized)) {
             return "grok-4.3";
         }
-        return "gpt-5.5-mini";
+        return DEFAULT_OPENAI_TRANSFORM_MODEL;
     }
 
     static boolean supportsTranscription(String provider) {
@@ -481,7 +740,13 @@ final class Prefs {
                 String id = sanitizeSelectablePreset(item.optString("id", ""));
                 String name = item.optString("name", defaultLabelForPreset(id)).trim();
                 if (PRESET_BUSINESS.equals(id) && "Business".equals(name)) {
-                    name = "Professional";
+                    name = "Work";
+                    changed = true;
+                } else if (PRESET_BUSINESS.equals(id) && "Professional".equals(name)) {
+                    name = "Work";
+                    changed = true;
+                } else if (PRESET_CASUAL.equals(id) && "Casual".equals(name)) {
+                    name = "Friends";
                     changed = true;
                 }
                 if (isLegacyDefaultCustom(id, name)) {
@@ -504,8 +769,8 @@ final class Prefs {
 
     private static List<PromptProfile> migratedPromptProfiles(Context context) {
         List<PromptProfile> profiles = new ArrayList<>();
-        profiles.add(new PromptProfile(PRESET_CASUAL, "Casual"));
-        profiles.add(new PromptProfile(PRESET_BUSINESS, "Professional"));
+        profiles.add(new PromptProfile(PRESET_CASUAL, "Friends"));
+        profiles.add(new PromptProfile(PRESET_BUSINESS, "Work"));
 
         String[] oldCustomIds = {"custom_1", "custom_2", "custom_3"};
         for (String oldId : oldCustomIds) {
@@ -521,11 +786,11 @@ final class Prefs {
 
     private static void ensureDefaultProfiles(List<PromptProfile> profiles) {
         if (!containsProfile(profiles, PRESET_CASUAL)) {
-            profiles.add(0, new PromptProfile(PRESET_CASUAL, "Casual"));
+            profiles.add(0, new PromptProfile(PRESET_CASUAL, "Friends"));
         }
         if (!containsProfile(profiles, PRESET_BUSINESS)) {
             int index = Math.min(1, profiles.size());
-            profiles.add(index, new PromptProfile(PRESET_BUSINESS, "Professional"));
+            profiles.add(index, new PromptProfile(PRESET_BUSINESS, "Work"));
         }
     }
 
@@ -611,6 +876,314 @@ final class Prefs {
         return replacements;
     }
 
+    static List<VoiceHistoryItem> transcriptHistory(Context context) {
+        List<VoiceHistoryItem> history = new ArrayList<>();
+        String json = shared(context).getString(KEY_TRANSCRIPT_HISTORY_JSON, "[]");
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.getJSONObject(i);
+                String id = item.optString("id", "");
+                long timestampMs = item.optLong("timestampMs", 0L);
+                String rawText = item.optString("rawText", "");
+                String finalText = item.optString("finalText", "");
+                String preset = sanitizeHistoryPreset(item.optString("preset", PRESET_CASUAL));
+                int expression = sanitizeExpression(item.optInt("expression", DEFAULT_EXPRESSION));
+                String operation = item.optString("operation", VoiceHistoryItem.OPERATION_DICTATION);
+                String targetLanguage = item.optString("targetLanguage", "");
+                Map<String, String> outputs = historyOutputsFromJson(item.optJSONObject("outputs"));
+                if (!PRESET_RAW.equals(preset) && !finalText.trim().isEmpty()) {
+                    outputs.put(historyVariantKey(preset, expression), finalText.trim());
+                }
+                if (!id.trim().isEmpty() && (!rawText.trim().isEmpty() || !finalText.trim().isEmpty())) {
+                    history.add(new VoiceHistoryItem(
+                            id,
+                            timestampMs,
+                            rawText,
+                            finalText,
+                            preset,
+                            expression,
+                            outputs,
+                            operation,
+                            targetLanguage
+                    ));
+                }
+            }
+        } catch (JSONException ignored) {
+        }
+        return history;
+    }
+
+    static String addTranscriptHistory(Context context, String rawText, String finalText, String preset) {
+        return addTranscriptHistory(
+                context,
+                rawText,
+                finalText,
+                preset,
+                expressionForPreset(context, preset),
+                VoiceHistoryItem.OPERATION_DICTATION,
+                ""
+        );
+    }
+
+    static String addTranscriptHistory(
+            Context context,
+            String rawText,
+            String finalText,
+            String preset,
+            String operation,
+            String targetLanguage
+    ) {
+        return addTranscriptHistory(
+                context,
+                rawText,
+                finalText,
+                preset,
+                expressionForPreset(context, preset),
+                operation,
+                targetLanguage
+        );
+    }
+
+    static String addTranscriptHistory(
+            Context context,
+            String rawText,
+            String finalText,
+            String preset,
+            int expression,
+            String operation,
+            String targetLanguage
+    ) {
+        String raw = rawText == null ? "" : rawText.trim();
+        String result = finalText == null ? "" : finalText.trim();
+        if (raw.isEmpty() && result.isEmpty()) {
+            return "";
+        }
+        String sanitizedPreset = sanitizeHistoryPreset(preset);
+        int sanitizedExpression = sanitizeExpression(expression);
+        Map<String, String> outputs = new HashMap<>();
+        if (!PRESET_RAW.equals(sanitizedPreset) && !result.isEmpty()) {
+            outputs.put(historyVariantKey(sanitizedPreset, sanitizedExpression), result);
+        }
+        String variantKey = historyVariantKey(sanitizedPreset, sanitizedExpression);
+        String activePreset = outputs.containsKey(variantKey) ? sanitizedPreset : PRESET_RAW;
+        String id = "voice_" + System.currentTimeMillis();
+        List<VoiceHistoryItem> history = transcriptHistory(context);
+        history.add(0, new VoiceHistoryItem(
+                id,
+                System.currentTimeMillis(),
+                raw,
+                result,
+                activePreset,
+                sanitizedExpression,
+                outputs,
+                operation,
+                targetLanguage
+        ));
+        while (history.size() > MAX_TRANSCRIPT_HISTORY) {
+            history.remove(history.size() - 1);
+        }
+        saveTranscriptHistory(context, history);
+        return id;
+    }
+
+    static void updateTranscriptHistory(Context context, String id, String rawText, String finalText, String preset) {
+        updateTranscriptHistory(context, id, rawText, finalText, preset, expressionForPreset(context, preset));
+    }
+
+    static void updateTranscriptHistory(
+            Context context,
+            String id,
+            String rawText,
+            String finalText,
+            String preset,
+            int expression
+    ) {
+        if (id == null || id.trim().isEmpty()) {
+            addTranscriptHistory(
+                    context,
+                    rawText,
+                    finalText,
+                    preset,
+                    expression,
+                    VoiceHistoryItem.OPERATION_DICTATION,
+                    ""
+            );
+            return;
+        }
+        String raw = rawText == null ? "" : rawText.trim();
+        String result = finalText == null ? "" : finalText.trim();
+        String sanitizedPreset = sanitizeHistoryPreset(preset);
+        int sanitizedExpression = sanitizeExpression(expression);
+        List<VoiceHistoryItem> history = transcriptHistory(context);
+        boolean updated = false;
+        for (int i = 0; i < history.size(); i++) {
+            VoiceHistoryItem item = history.get(i);
+            if (id.equals(item.id)) {
+                Map<String, String> outputs = new HashMap<>(item.outputs);
+                if (!PRESET_RAW.equals(sanitizedPreset) && !result.isEmpty()) {
+                    outputs.put(historyVariantKey(sanitizedPreset, sanitizedExpression), result);
+                }
+                history.set(i, new VoiceHistoryItem(
+                        item.id,
+                        item.timestampMs,
+                        raw.isEmpty() ? item.rawText : raw,
+                        result,
+                        sanitizedPreset,
+                        sanitizedExpression,
+                        outputs,
+                        item.operation,
+                        item.targetLanguage
+                ));
+                updated = true;
+                break;
+            }
+        }
+        if (!updated) {
+            Map<String, String> outputs = new HashMap<>();
+            if (!PRESET_RAW.equals(sanitizedPreset) && !result.isEmpty()) {
+                outputs.put(historyVariantKey(sanitizedPreset, sanitizedExpression), result);
+            }
+            history.add(0, new VoiceHistoryItem(
+                    id,
+                    System.currentTimeMillis(),
+                    raw,
+                    result,
+                    sanitizedPreset,
+                    sanitizedExpression,
+                    outputs,
+                    VoiceHistoryItem.OPERATION_DICTATION,
+                    ""
+            ));
+        }
+        while (history.size() > MAX_TRANSCRIPT_HISTORY) {
+            history.remove(history.size() - 1);
+        }
+        saveTranscriptHistory(context, history);
+    }
+
+    static void selectTranscriptHistoryPreset(Context context, String id, String preset) {
+        selectTranscriptHistoryVariant(
+                context,
+                id,
+                preset,
+                PRESET_RAW.equals(preset) ? DEFAULT_EXPRESSION : expressionForPreset(context, preset)
+        );
+    }
+
+    static void selectTranscriptHistoryVariant(Context context, String id, String preset, int expression) {
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
+        String sanitizedPreset = sanitizeHistoryPreset(preset);
+        int sanitizedExpression = sanitizeExpression(expression);
+        List<VoiceHistoryItem> history = transcriptHistory(context);
+        boolean changed = false;
+        for (int i = 0; i < history.size(); i++) {
+            VoiceHistoryItem item = history.get(i);
+            if (id.equals(item.id)) {
+                history.set(i, new VoiceHistoryItem(
+                        item.id,
+                        item.timestampMs,
+                        item.rawText,
+                        item.outputForVariant(sanitizedPreset, sanitizedExpression),
+                        sanitizedPreset,
+                        sanitizedExpression,
+                        item.outputs,
+                        item.operation,
+                        item.targetLanguage
+                ));
+                changed = true;
+                break;
+            }
+        }
+        if (changed) {
+            saveTranscriptHistory(context, history);
+        }
+    }
+
+    private static void saveTranscriptHistory(Context context, List<VoiceHistoryItem> history) {
+        JSONArray array = new JSONArray();
+        for (VoiceHistoryItem item : history) {
+            JSONObject json = new JSONObject();
+            try {
+                json.put("id", item.id);
+                json.put("timestampMs", item.timestampMs);
+                json.put("rawText", item.rawText);
+                json.put("finalText", item.outputForVariant(item.preset, item.expression));
+                json.put("preset", sanitizeHistoryPreset(item.preset));
+                json.put("expression", sanitizeExpression(item.expression));
+                json.put("operation", item.operation);
+                json.put("targetLanguage", item.targetLanguage);
+                JSONObject outputs = new JSONObject();
+                for (Map.Entry<String, String> entry : item.outputs.entrySet()) {
+                    String key = historyVariantKey(
+                            historyVariantPreset(entry.getKey()),
+                            historyVariantExpression(entry.getKey())
+                    );
+                    if (!PRESET_RAW.equals(key) && entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                        outputs.put(key, entry.getValue().trim());
+                    }
+                }
+                json.put("outputs", outputs);
+                array.put(json);
+            } catch (JSONException ignored) {
+            }
+        }
+        shared(context).edit().putString(KEY_TRANSCRIPT_HISTORY_JSON, array.toString()).apply();
+    }
+
+    private static Map<String, String> historyOutputsFromJson(JSONObject json) {
+        Map<String, String> outputs = new HashMap<>();
+        if (json == null) {
+            return outputs;
+        }
+        Iterator<String> keys = json.keys();
+        while (keys.hasNext()) {
+            String originalKey = keys.next();
+            String key = historyVariantKey(
+                    historyVariantPreset(originalKey),
+                    historyVariantExpression(originalKey)
+            );
+            String value = json.optString(originalKey, "").trim();
+            if (!PRESET_RAW.equals(key) && !value.isEmpty()) {
+                outputs.put(key, value);
+            }
+        }
+        return outputs;
+    }
+
+    private static String sanitizeHistoryPreset(String preset) {
+        if (PRESET_RAW.equals(preset)) {
+            return PRESET_RAW;
+        }
+        return sanitizeSelectablePreset(preset);
+    }
+
+    static boolean isLearnedWord(Context context, String word) {
+        String normalized = normalizeLearnedWord(word);
+        return !normalized.isEmpty()
+                && shared(context).getStringSet(KEY_LEARNED_WORDS, new HashSet<>()).contains(normalized);
+    }
+
+    static void learnWord(Context context, String word) {
+        String normalized = normalizeLearnedWord(word);
+        if (normalized.length() < 2 || normalized.length() > 40) {
+            return;
+        }
+        Set<String> learned = new HashSet<>(shared(context).getStringSet(KEY_LEARNED_WORDS, new HashSet<>()));
+        while (learned.size() >= 512) {
+            String first = learned.iterator().next();
+            learned.remove(first);
+        }
+        learned.add(normalized);
+        shared(context).edit().putStringSet(KEY_LEARNED_WORDS, learned).apply();
+    }
+
+    private static String normalizeLearnedWord(String word) {
+        return word == null ? "" : word.trim().toLowerCase(Locale.US);
+    }
+
     private static String casualPrompt() {
         return "You are a text-transformation tool, not a conversational assistant.\n\n"
                 + "Your task is to lightly clean raw speech-to-text while preserving the speaker's wording, voice, tone, intent, and order. "
@@ -671,6 +1244,18 @@ final class Prefs {
                 + "- Convert ordinary prose into a list just because it contains commas or conjunctions.\n\n"
                 + "- Add headers, labels, explanations, commentary, or summaries unless the speaker clearly requested that structure.\n\n"
                 + "Return only the final transformed text.";
+    }
+
+    private static String relationshipPrompt(String styleGuidance) {
+        return "You are a text-transformation tool, not a conversational assistant.\n\n"
+                + "Turn raw speech-to-text into a natural message for the intended recipient while preserving the speaker's complete meaning, intent, facts, order, uncertainty, and emotional tone.\n\n"
+                + "Remove nonsemantic fillers such as um, uh, er, filler uses of like, you know, and I mean. Remove false starts, abandoned fragments, accidental immediate repeats, and clear dictation artifacts. "
+                + "Fix punctuation, capitalization, spacing, grammar, and high-confidence transcription errors. Lightly adjust phrasing only where needed to make the selected relationship tone sound natural.\n\n"
+                + "Always preserve meaningful hedges such as I think, maybe, probably, kind of, and I guess. Preserve intentional repetition, questions, profanity, humor, names, numbers, dates, URLs, and technical terms. "
+                + "Use bullets for natural lists and numbered steps when order matters. Do not add facts, promises, opinions, greetings, sign-offs, nicknames, or emotional content the speaker did not express.\n\n"
+                + "Voice style:\n"
+                + styleGuidance
+                + "\n\nReturn only the finished text.";
     }
 
     private static String customPrompt() {

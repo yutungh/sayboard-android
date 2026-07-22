@@ -76,6 +76,52 @@ function Set-StringPreference([xml]$Document, [string]$Name, [string]$Value) {
     return $true
 }
 
+function Set-BooleanPreference([xml]$Document, [string]$Name, [bool]$Value) {
+    $existing = $Document.SelectSingleNode("/map/boolean[@name='$Name']")
+    if ($null -eq $existing) {
+        $existing = $Document.CreateElement("boolean")
+        $nameAttribute = $Document.CreateAttribute("name")
+        $nameAttribute.Value = $Name
+        [void]$existing.Attributes.Append($nameAttribute)
+        [void]$Document.map.AppendChild($existing)
+    }
+    $valueAttribute = $existing.Attributes["value"]
+    if ($null -eq $valueAttribute) {
+        $valueAttribute = $Document.CreateAttribute("value")
+        [void]$existing.Attributes.Append($valueAttribute)
+    }
+    $valueAttribute.Value = $Value.ToString().ToLowerInvariant()
+}
+
+function Add-PrivateWifeVoiceStyle([xml]$Document) {
+    $existing = $Document.SelectSingleNode("/map/string[@name='prompts_json']")
+    $profiles = @()
+    if ($null -ne $existing -and ![string]::IsNullOrWhiteSpace($existing.InnerText)) {
+        try {
+            $decodedProfiles = $existing.InnerText | ConvertFrom-Json
+            foreach ($profile in $decodedProfiles) {
+                $profiles += $profile
+            }
+        } catch {
+            $profiles = @()
+        }
+    }
+
+    if (!($profiles | Where-Object { $_.id -eq "casual" })) {
+        $profiles += [pscustomobject]@{ id = "casual"; name = "Friends" }
+    }
+    if (!($profiles | Where-Object { $_.id -eq "business" })) {
+        $profiles += [pscustomobject]@{ id = "business"; name = "Work" }
+    }
+    $wife = $profiles | Where-Object { $_.id -eq "partner" } | Select-Object -First 1
+    if ($null -eq $wife) {
+        $profiles += [pscustomobject]@{ id = "partner"; name = "Wife" }
+    } else {
+        $wife.name = "Wife"
+    }
+    [void](Set-StringPreference $Document "prompts_json" ($profiles | ConvertTo-Json -Compress))
+}
+
 function Save-XmlUtf8([xml]$Document, [string]$Path) {
     $settings = New-Object System.Xml.XmlWriterSettings
     $settings.Encoding = New-Object System.Text.UTF8Encoding($false)
@@ -148,10 +194,9 @@ foreach ($key in $keys) {
     }
 }
 
-if ($seeded.Count -eq 0) {
-    Write-Host "No API keys found in $EnvPath. App install completed without seeding keys."
-    exit 0
-}
+[void](Set-StringPreference $document "translation_target_language" "Chinese (Simplified)")
+Set-BooleanPreference $document "translation_enabled" $true
+Add-PrivateWifeVoiceStyle $document
 
 $tempXml = Join-Path ([System.IO.Path]::GetTempPath()) ("voiceflow-keyboard-prefs-" + [System.Guid]::NewGuid().ToString("N") + ".xml")
 $remoteXml = "/data/local/tmp/voiceflow-keyboard-prefs.xml"
@@ -178,4 +223,10 @@ try {
     Remove-Item -LiteralPath $tempXml -ErrorAction SilentlyContinue
 }
 
-Write-Host ("Seeded API keys on device: " + ($seeded -join ", "))
+if ($seeded.Count -gt 0) {
+    Write-Host ("Seeded API keys on device: " + ($seeded -join ", "))
+} else {
+    Write-Host "No API keys found in $EnvPath."
+}
+Write-Host "Enabled private translation button: Chinese (Simplified)"
+Write-Host "Enabled private voice style: Wife"

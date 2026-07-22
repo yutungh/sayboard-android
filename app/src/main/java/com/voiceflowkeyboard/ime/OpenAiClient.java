@@ -39,7 +39,7 @@ final class OpenAiClient {
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern RECOMMENDED_TRANSFORM_MODEL = Pattern.compile(
-            "^(gpt-5\\.5(?:-mini)?|gpt-5(?:-mini)?|gpt-4\\.1(?:-mini)?)$",
+            "^(gpt-5\\.5|gpt-5\\.4(?:-mini)?|gpt-5(?:-mini)?|gpt-4\\.1(?:-mini)?)$",
             Pattern.CASE_INSENSITIVE
     );
     private static final String OUTPUT_CONTRACT = "\n\nOutput contract:\n"
@@ -78,15 +78,33 @@ final class OpenAiClient {
     }
 
     static String transform(Context context, String transcript, String preset) throws Exception {
+        return transform(context, transcript, preset, Prefs.expressionForPreset(context, preset));
+    }
+
+    static String transform(Context context, String transcript, String preset, int expression) throws Exception {
+        String prompt = nonEmpty(Prefs.promptForPreset(context, preset, expression), Prefs.defaultPromptForPreset(preset));
+        return transformWithPrompt(
+                context,
+                prompt,
+                "Transcript:\n" + transcript,
+                Prefs.historyVariantKey(preset, expression)
+        );
+    }
+
+    static String applyInstruction(Context context, String sourceText, String instruction, String prompt) throws Exception {
+        String input = "Editing instruction:\n" + instruction + "\n\nSource text:\n" + sourceText;
+        return transformWithPrompt(context, prompt, input, "instruction");
+    }
+
+    private static String transformWithPrompt(Context context, String prompt, String input, String cacheKey) throws Exception {
         String apiKey = requiredApiKey(context);
-        String model = nonEmpty(Prefs.transformModel(context), "gpt-5.5-mini");
-        String prompt = nonEmpty(Prefs.promptForPreset(context, preset), Prefs.defaultPromptForPreset(preset));
+        String model = nonEmpty(Prefs.transformModel(context), "gpt-5.4-mini");
         JSONObject baseBody = new JSONObject()
                 .put("model", model)
-                .put("input", prompt + OUTPUT_CONTRACT + "\n\nTranscript:\n" + transcript);
+                .put("input", prompt + OUTPUT_CONTRACT + "\n\n" + input);
 
         JSONObject body = new JSONObject(baseBody.toString());
-        boolean hasLatencyOptions = addLatencyOptions(body, model, preset, prompt);
+        boolean hasLatencyOptions = addLatencyOptions(body, model, cacheKey, prompt);
         String response;
         try {
             response = sendResponsesRequest(apiKey, body);
@@ -99,8 +117,9 @@ final class OpenAiClient {
 
         JSONObject json = new JSONObject(response);
         String parsed = findOutputText(json);
-        if (!parsed.isEmpty()) {
-            return stripWholeOutputWrappers(parsed).trim();
+        String cleaned = stripWholeOutputWrappers(parsed).trim();
+        if (!cleaned.isEmpty()) {
+            return cleaned;
         }
         throw new IOException("Transform response did not include output text.");
     }
@@ -180,9 +199,8 @@ final class OpenAiClient {
 
     static List<String> defaultTransformModels() {
         List<String> models = new ArrayList<>();
-        models.add("gpt-5.5-mini");
-        models.add("gpt-5.5");
         models.add("gpt-5.4-mini");
+        models.add("gpt-5.5");
         models.add("gpt-5.4");
         models.add("gpt-5-mini");
         models.add("gpt-5");
@@ -237,7 +255,7 @@ final class OpenAiClient {
 
     private static int modelPriority(String model) {
         String lower = model.toLowerCase(Locale.US);
-        if (lower.startsWith("gpt-5.5-mini")) {
+        if (lower.startsWith("gpt-5.4-mini")) {
             return 0;
         }
         if (lower.startsWith("gpt-5.5")) {

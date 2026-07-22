@@ -42,6 +42,10 @@
             android:name=".ModelPickerActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".TranscriptDetailActivity"
+            android:exported="false" />
+
         <service
             android:name=".VoiceFlowKeyboardService"
             android:exported="true"

@@ -18,6 +18,7 @@ public class PromptEditorActivity extends Activity {
     private String promptId;
     private EditText nameInput;
     private EditText promptInput;
+    private EditText styleGuidanceInput;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,7 +28,7 @@ public class PromptEditorActivity extends Activity {
         if (promptId == null || promptId.trim().isEmpty()) {
             promptId = Prefs.PRESET_CASUAL;
         }
-        setTitle("Edit prompt");
+        setTitle("Edit voice style");
         setContentView(buildContent());
     }
 
@@ -57,10 +58,20 @@ public class PromptEditorActivity extends Activity {
         details.addView(field("Name", nameInput));
         if (Prefs.canDeletePromptProfile(promptId)) {
             details.addView(divider());
-            details.addView(actionRow("Delete prompt", "Remove from profile picker", Ui.DANGER, Ui.DANGER_SOFT, v -> confirmDelete()));
+            String action = Prefs.isRelationshipStyle(promptId) ? "Hide style" : "Delete style";
+            String detail = Prefs.isRelationshipStyle(promptId)
+                    ? "Remove from the recording picker"
+                    : "Permanently remove this custom style";
+            details.addView(actionRow(action, detail, Ui.DANGER, Ui.DANGER_SOFT, v -> confirmDelete()));
         }
 
-        LinearLayout prompt = section(content, "Prompt");
+        LinearLayout style = section(content, "Translation tone");
+        styleGuidanceInput = input("Describe how this should sound to the recipient", 7);
+        styleGuidanceInput.setText(Prefs.styleGuidanceForPreset(this, profile.id));
+        styleGuidanceInput.setGravity(Gravity.TOP | Gravity.START);
+        style.addView(styleGuidanceInput);
+
+        LinearLayout prompt = section(content, "Dictation behavior");
         promptInput = input("Prompt", 18);
         promptInput.setText(Prefs.promptForPreset(this, profile.id));
         promptInput.setGravity(Gravity.TOP | Gravity.START);
@@ -135,19 +146,27 @@ public class PromptEditorActivity extends Activity {
     }
 
     private void savePrompt() {
-        Prefs.savePromptProfile(this, promptId, nameInput.getText().toString(), promptInput.getText().toString());
-        Toast.makeText(this, "Prompt saved", Toast.LENGTH_SHORT).show();
+        Prefs.savePromptProfile(
+                this,
+                promptId,
+                nameInput.getText().toString(),
+                promptInput.getText().toString(),
+                styleGuidanceInput.getText().toString()
+        );
+        Toast.makeText(this, "Voice style saved", Toast.LENGTH_SHORT).show();
         finish();
     }
 
     private void confirmDelete() {
         new AlertDialog.Builder(this)
-                .setTitle("Delete prompt?")
-                .setMessage("This removes the prompt from Settings and the keyboard profile picker.")
+                .setTitle(Prefs.isRelationshipStyle(promptId) ? "Hide voice style?" : "Delete voice style?")
+                .setMessage(Prefs.isRelationshipStyle(promptId)
+                        ? "You can add this relationship style again from Settings."
+                        : "This permanently removes the custom style from Settings and the recording picker.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Delete", (dialog, which) -> {
                     Prefs.deletePromptProfile(this, promptId);
-                    Toast.makeText(this, "Prompt deleted", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, Prefs.isRelationshipStyle(promptId) ? "Voice style hidden" : "Voice style deleted", Toast.LENGTH_SHORT).show();
                     finish();
                 })
                 .show();

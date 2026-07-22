@@ -27,6 +27,8 @@ public class SettingsActivity extends Activity {
     private TextView offlineFallbackValue;
     private TextView activeProfileValue;
     private CheckBox transformEnabledInput;
+    private CheckBox translationEnabledInput;
+    private TextView translationLanguageValue;
     private String selectedPreset;
     private boolean created;
     private boolean downloadingOfflineModel;
@@ -81,16 +83,33 @@ public class SettingsActivity extends Activity {
         transform.addView(row("Transform model", modelSelectionSummary(false), ">", v -> openModelPicker(false)));
         transform.addView(divider());
         activeProfileValue = rowValue(Prefs.labelForPreset(this, selectedPreset));
-        transform.addView(row("Default profile", activeProfileValue, ">", v -> showProfileDialog()));
+        transform.addView(row("Default voice style", activeProfileValue, ">", v -> showProfileDialog()));
 
-        LinearLayout prompts = section(root, "Prompts");
+        LinearLayout translation = section(root, "Translation");
+        translationEnabledInput = new CheckBox(this);
+        translationEnabledInput.setChecked(Prefs.translationEnabled(this));
+        translation.addView(checkboxRow("Show translate button", translationEnabledInput, () -> {
+            Prefs.setTranslationEnabled(this, translationEnabledInput.isChecked());
+        }));
+        translation.addView(divider());
+        translationLanguageValue = rowValue(Prefs.translationTargetLanguage(this));
+        translation.addView(row("Target language", translationLanguageValue, ">", v -> showTranslationLanguageDialog()));
+
+        LinearLayout prompts = section(root, "Voice styles");
         List<PromptProfile> profiles = Prefs.promptProfiles(this);
         for (int i = 0; i < profiles.size(); i++) {
             PromptProfile profile = profiles.get(i);
-            prompts.addView(row(profile.name, "Edit prompt", ">", v -> openPrompt(profile.id)));
+            prompts.addView(row(profile.name, "Edit style", ">", v -> openPrompt(profile.id)));
             prompts.addView(divider());
         }
-        prompts.addView(row("+ New prompt", "Create a profile", ">", v -> showNewPromptDialog()));
+        for (PromptProfile template : Prefs.hiddenVoiceStyleTemplates(this)) {
+            prompts.addView(row("+ " + template.name, "Add relationship style", ">", v -> {
+                Prefs.addVoiceStyleTemplate(this, template.id);
+                setContentView(buildContent());
+            }));
+            prompts.addView(divider());
+        }
+        prompts.addView(row("+ New voice style", "Create a custom style", ">", v -> showNewPromptDialog()));
 
         LinearLayout replacements = section(root, "Find and replace");
         replacements.addView(row("Personal replacements", replacementSummary(), ">", v -> startActivity(new Intent(this, FindReplaceActivity.class))));
@@ -250,12 +269,33 @@ public class SettingsActivity extends Activity {
         String[] values = Prefs.selectablePresetValues(this);
         String[] labels = Prefs.labelsForPresets(this, values);
         new AlertDialog.Builder(this)
-                .setTitle("Default profile")
+                .setTitle("Default voice style")
                 .setItems(labels, (dialog, which) -> {
                     selectedPreset = values[which];
                     activeProfileValue.setText(labels[which]);
                     saveCurrentSettings();
                 })
+                .show();
+    }
+
+    private void showTranslationLanguageDialog() {
+        String[] languages = Prefs.translationLanguages();
+        String selected = Prefs.translationTargetLanguage(this);
+        int checked = 0;
+        for (int i = 0; i < languages.length; i++) {
+            if (languages[i].equals(selected)) {
+                checked = i;
+                break;
+            }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Target language")
+                .setSingleChoiceItems(languages, checked, (dialog, which) -> {
+                    Prefs.setTranslationTargetLanguage(this, languages[which]);
+                    translationLanguageValue.setText(languages[which]);
+                    dialog.dismiss();
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
     }
 
@@ -279,10 +319,10 @@ public class SettingsActivity extends Activity {
     }
 
     private void showNewPromptDialog() {
-        EditText nameInput = input("Prompt name", 1, false);
+        EditText nameInput = input("Voice style name", 1, false);
         nameInput.setSingleLine(true);
         new AlertDialog.Builder(this)
-                .setTitle("New prompt")
+                .setTitle("New voice style")
                 .setView(nameInput)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Create", (dialog, which) -> {
