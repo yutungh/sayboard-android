@@ -59,7 +59,7 @@ public class SettingsActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.BACKGROUND);
-        Ui.applySystemBarPadding(root, dp(18), dp(16), dp(18), dp(22));
+        Ui.applySystemBarPadding(root, dp(16), dp(14), dp(16), dp(20));
         scroll.addView(root);
 
         root.addView(header());
@@ -82,7 +82,7 @@ public class SettingsActivity extends Activity {
         transform.addView(divider());
         transform.addView(row("Transform model", modelSelectionSummary(false), ">", v -> openModelPicker(false)));
         transform.addView(divider());
-        activeProfileValue = rowValue(Prefs.labelForPreset(this, selectedPreset));
+        activeProfileValue = rowValue(Prefs.displayLabelForPreset(this, selectedPreset));
         transform.addView(row("Default voice style", activeProfileValue, ">", v -> showProfileDialog()));
 
         LinearLayout translation = section(root, "Translation");
@@ -99,11 +99,11 @@ public class SettingsActivity extends Activity {
         List<PromptProfile> profiles = Prefs.promptProfiles(this);
         for (int i = 0; i < profiles.size(); i++) {
             PromptProfile profile = profiles.get(i);
-            prompts.addView(row(profile.name, "Edit style", ">", v -> openPrompt(profile.id)));
+            prompts.addView(voiceStyleRow(profile));
             prompts.addView(divider());
         }
         for (PromptProfile template : Prefs.hiddenVoiceStyleTemplates(this)) {
-            prompts.addView(row("+ " + template.name, "Add relationship style", ">", v -> {
+            prompts.addView(row("+ " + template.displayName(), "Add relationship style", ">", v -> {
                 Prefs.addVoiceStyleTemplate(this, template.id);
                 setContentView(buildContent());
             }));
@@ -168,13 +168,13 @@ public class SettingsActivity extends Activity {
         TextView label = text(title, 13, true, Ui.MUTED);
         label.setAllCaps(true);
         label.setLetterSpacing(0.04f);
-        label.setPadding(0, dp(20), 0, dp(7));
+        label.setPadding(0, dp(16), 0, dp(6));
         root.addView(label);
 
         LinearLayout section = new LinearLayout(this);
         section.setOrientation(LinearLayout.VERTICAL);
         section.setBackground(Ui.roundedStroke(this, Ui.SURFACE, 18, Ui.DIVIDER));
-        section.setPadding(0, dp(2), 0, dp(2));
+        section.setPadding(0, dp(1), 0, dp(1));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -198,8 +198,8 @@ public class SettingsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(66));
-        row.setPadding(dp(16), dp(10), dp(12), dp(10));
+        row.setMinimumHeight(dp(60));
+        row.setPadding(dp(14), dp(8), dp(10), dp(8));
         row.setBackgroundColor(Color.TRANSPARENT);
         row.setClickable(listener != null);
         if (listener != null) {
@@ -210,13 +210,46 @@ public class SettingsActivity extends Activity {
         labels.setOrientation(LinearLayout.VERTICAL);
         labels.setGravity(Gravity.CENTER_VERTICAL);
         labels.addView(text(title, 16, true, Ui.TEXT));
-        valueView.setPadding(0, dp(5), 0, 0);
+        valueView.setPadding(0, dp(3), 0, 0);
         labels.addView(valueView);
         row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView end = text(accessory, 20, true, Ui.MUTED);
         end.setGravity(Gravity.CENTER);
         row.addView(end, new LinearLayout.LayoutParams(dp(28), LinearLayout.LayoutParams.MATCH_PARENT));
+        return row;
+    }
+
+    private View voiceStyleRow(PromptProfile profile) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(58));
+        row.setPadding(dp(12), dp(7), dp(10), dp(7));
+        row.setClickable(true);
+        row.setOnClickListener(v -> openPrompt(profile.id));
+
+        if (!profile.icon.isEmpty()) {
+            TextView icon = text(profile.icon, 21, false, Ui.TEXT);
+            icon.setGravity(Gravity.CENTER);
+            icon.setBackground(Ui.rounded(this, Ui.SURFACE_ALT, 12));
+            LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(38), dp(38));
+            iconParams.setMargins(0, 0, dp(11), 0);
+            row.addView(icon, iconParams);
+        }
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setGravity(Gravity.CENTER_VERTICAL);
+        labels.addView(text(profile.name, 16, true, Ui.TEXT));
+        TextView detail = text("Tap to customize", 12, false, Ui.MUTED);
+        detail.setPadding(0, dp(2), 0, 0);
+        labels.addView(detail);
+        row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView end = text(">", 20, true, Ui.MUTED);
+        end.setGravity(Gravity.CENTER);
+        row.addView(end, new LinearLayout.LayoutParams(dp(26), dp(38)));
         return row;
     }
 

@@ -19,6 +19,17 @@ public class PromptEditorActivity extends Activity {
     private EditText nameInput;
     private EditText promptInput;
     private EditText styleGuidanceInput;
+    private TextView iconValue;
+    private String selectedIcon = "";
+
+    private static final String[] ICON_VALUES = {
+            "", "💬", "🙂", "💼", "❤️", "🏠", "👥", "✨", "🎨", "🎉", "🧠", "📝", "⚡", "🌿", "🔥"
+    };
+    private static final String[] ICON_LABELS = {
+            "None", "💬  Chat", "🙂  Friendly", "💼  Work", "❤️  Partner", "🏠  Family",
+            "👥  Group", "✨  Custom", "🎨  Creative", "🎉  Fun", "🧠  Thoughtful",
+            "📝  Writing", "⚡  Direct", "🌿  Calm", "🔥  Energetic", "Custom emoji…"
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +67,9 @@ public class PromptEditorActivity extends Activity {
         nameInput = input("Name", 1);
         nameInput.setText(profile.name);
         details.addView(field("Name", nameInput));
+        selectedIcon = profile.icon;
+        details.addView(divider());
+        details.addView(iconRow());
         if (Prefs.canDeletePromptProfile(promptId)) {
             details.addView(divider());
             String action = Prefs.isRelationshipStyle(promptId) ? "Hide style" : "Delete style";
@@ -65,13 +79,13 @@ public class PromptEditorActivity extends Activity {
             details.addView(actionRow(action, detail, Ui.DANGER, Ui.DANGER_SOFT, v -> confirmDelete()));
         }
 
-        LinearLayout style = section(content, "Translation tone");
+        LinearLayout style = section(content, "Tone and audience");
         styleGuidanceInput = input("Describe how this should sound to the recipient", 7);
         styleGuidanceInput.setText(Prefs.styleGuidanceForPreset(this, profile.id));
         styleGuidanceInput.setGravity(Gravity.TOP | Gravity.START);
         style.addView(styleGuidanceInput);
 
-        LinearLayout prompt = section(content, "Dictation behavior");
+        LinearLayout prompt = section(content, "Dictation cleanup");
         promptInput = input("Prompt", 18);
         promptInput.setText(Prefs.promptForPreset(this, profile.id));
         promptInput.setGravity(Gravity.TOP | Gravity.START);
@@ -113,7 +127,7 @@ public class PromptEditorActivity extends Activity {
 
         LinearLayout section = new LinearLayout(this);
         section.setOrientation(LinearLayout.VERTICAL);
-        section.setPadding(dp(14), dp(12), dp(14), dp(14));
+        section.setPadding(dp(12), dp(10), dp(12), dp(12));
         section.setBackground(Ui.roundedStroke(this, Ui.SURFACE, 18, Ui.DIVIDER));
         root.addView(section);
         return section;
@@ -145,11 +159,97 @@ public class PromptEditorActivity extends Activity {
         return row;
     }
 
+    private View iconRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(4), 0, dp(4));
+        row.setClickable(true);
+        row.setOnClickListener(v -> showIconPicker());
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.addView(Ui.text(this, "Style icon", 15, true, Ui.TEXT));
+        TextView detail = Ui.text(this, "Optional emoji shown in the keyboard", 12, false, Ui.MUTED);
+        detail.setPadding(0, dp(3), 0, 0);
+        labels.addView(detail);
+        row.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        iconValue = Ui.text(this, "", 22, true, Ui.TEXT);
+        iconValue.setGravity(Gravity.CENTER);
+        iconValue.setMinWidth(dp(52));
+        iconValue.setMinHeight(dp(40));
+        iconValue.setPadding(dp(10), 0, dp(10), 0);
+        iconValue.setBackground(Ui.rounded(this, Ui.SURFACE_ALT, 14));
+        updateIconValue();
+        row.addView(iconValue);
+        return row;
+    }
+
+    private void showIconPicker() {
+        int checked = -1;
+        for (int i = 0; i < ICON_VALUES.length; i++) {
+            if (ICON_VALUES[i].equals(selectedIcon)) {
+                checked = i;
+                break;
+            }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Choose a style icon")
+                .setSingleChoiceItems(ICON_LABELS, checked, (dialog, which) -> {
+                    if (which < ICON_VALUES.length) {
+                        selectedIcon = ICON_VALUES[which];
+                        updateIconValue();
+                        dialog.dismiss();
+                    } else {
+                        dialog.dismiss();
+                        showCustomIconDialog();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showCustomIconDialog() {
+        EditText custom = input("Emoji", 1);
+        custom.setSingleLine(true);
+        custom.setText(selectedIcon);
+        custom.setSelection(custom.getText().length());
+        int side = dp(20);
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setPadding(side, dp(4), side, 0);
+        wrapper.addView(custom, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        new AlertDialog.Builder(this)
+                .setTitle("Custom emoji")
+                .setMessage("Enter one emoji or a short symbol.")
+                .setView(wrapper)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Use", (dialog, which) -> {
+                    selectedIcon = Prefs.sanitizeStyleIcon(custom.getText().toString());
+                    updateIconValue();
+                })
+                .show();
+    }
+
+    private void updateIconValue() {
+        if (iconValue == null) {
+            return;
+        }
+        boolean empty = selectedIcon == null || selectedIcon.isEmpty();
+        iconValue.setText(empty ? "None" : selectedIcon);
+        iconValue.setTextSize(empty ? 12 : 22);
+        iconValue.setTextColor(empty ? Ui.MUTED : Ui.TEXT);
+    }
+
     private void savePrompt() {
         Prefs.savePromptProfile(
                 this,
                 promptId,
                 nameInput.getText().toString(),
+                selectedIcon,
                 promptInput.getText().toString(),
                 styleGuidanceInput.getText().toString()
         );
@@ -179,7 +279,7 @@ public class PromptEditorActivity extends Activity {
         input.setHintTextColor(Ui.MUTED);
         input.setSingleLine(lines == 1);
         input.setMinLines(lines);
-        input.setPadding(0, dp(10), 0, dp(4));
+        input.setPadding(0, dp(7), 0, dp(3));
         input.setBackgroundColor(0x00000000);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         return input;
@@ -192,7 +292,7 @@ public class PromptEditorActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 Math.max(1, dp(1))
         );
-        params.setMargins(0, dp(14), 0, dp(14));
+        params.setMargins(0, dp(10), 0, dp(10));
         divider.setLayoutParams(params);
         return divider;
     }

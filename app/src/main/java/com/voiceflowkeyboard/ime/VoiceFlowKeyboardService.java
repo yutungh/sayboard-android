@@ -1067,7 +1067,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         showChipStrip();
         for (String value : Prefs.selectablePresetValues(this)) {
             final String preset = value;
-            TextView chip = chip(Prefs.labelForPreset(this, preset), v -> {
+            TextView chip = chip(Prefs.displayLabelForPreset(this, preset), v -> {
                 selectedPreset = preset;
                 selectedExpression = Prefs.expressionForPreset(this, selectedPreset);
                 Prefs.setActivePreset(this, selectedPreset);
@@ -1087,7 +1087,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         voiceStyleOverlay.animate().cancel();
         voiceStyleOverlay.removeAllViews();
         voiceStyleOverlay.setOrientation(LinearLayout.VERTICAL);
-        voiceStyleOverlay.setPadding(dp(8), dp(5), dp(8), dp(7));
+        voiceStyleOverlay.setPadding(dp(6), dp(3), dp(6), dp(5));
         voiceStyleOverlay.setBackgroundColor(Color.argb(
                 248,
                 Color.red(colors.background),
@@ -1107,10 +1107,10 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         header.setTextColor(colors.text);
         header.setAlpha(0.76f);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(8), 0, dp(8), 0);
+        header.setPadding(dp(6), 0, dp(6), 0);
         headerRow.addView(header, new LinearLayout.LayoutParams(
                 0,
-                dp(26)
+                dp(24)
                 , 1f
         ));
         if (retoneMode) {
@@ -1119,43 +1119,31 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         }
         voiceStyleOverlay.addView(headerRow, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(28)
+                dp(26)
         ));
 
         List<PromptProfile> styles = Prefs.promptProfiles(this);
-        if (styles.size() <= 4) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            for (PromptProfile style : styles) {
-                TextView button = voiceStyleButton(style);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(46), 1f);
-                params.setMargins(dp(3), dp(3), dp(3), dp(3));
-                row.addView(button, params);
-            }
-            voiceStyleOverlay.addView(row, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(52)
-            ));
-        } else {
-            HorizontalScrollView scroller = new HorizontalScrollView(this);
-            scroller.setHorizontalScrollBarEnabled(false);
-            scroller.setFillViewport(false);
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            for (PromptProfile style : styles) {
-                TextView button = voiceStyleButton(style);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(112), dp(46));
-                params.setMargins(dp(3), dp(3), dp(3), dp(3));
-                row.addView(button, params);
-            }
-            scroller.addView(row);
-            voiceStyleOverlay.addView(scroller, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(52)
-            ));
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setFillViewport(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(1), 0, dp(5), 0);
+        for (PromptProfile style : styles) {
+            TextView button = voiceStyleButton(style);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(40)
+            );
+            params.setMargins(dp(2), dp(2), dp(2), dp(2));
+            row.addView(button, params);
         }
+        scroller.addView(row);
+        voiceStyleOverlay.addView(scroller, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44)
+        ));
 
         View divider = new View(this);
         divider.setBackgroundColor(colors.stroke);
@@ -1163,7 +1151,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(1)
         );
-        dividerParams.setMargins(dp(4), dp(5), dp(4), dp(3));
+        dividerParams.setMargins(dp(3), dp(3), dp(3), dp(2));
         voiceStyleOverlay.addView(divider, dividerParams);
         voiceStyleOverlay.addView(expressionControl(), new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1182,10 +1170,13 @@ public class VoiceFlowKeyboardService extends InputMethodService {
 
     private TextView voiceStyleButton(PromptProfile style) {
         boolean selected = style.id.equals(selectedPreset);
-        TextView button = historyText(style.name, 13, true);
+        TextView button = historyText(style.displayName(), 12, true);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
         button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setMinWidth(dp(68));
+        button.setMaxWidth(dp(150));
         button.setTextColor(selected ? colors.onAccent : colors.text);
         button.setBackground(keyBackground(selected ? colors.accent : colors.keyAlt, selected));
         button.setContentDescription("Voice style " + style.name + (selected ? ", selected" : ""));

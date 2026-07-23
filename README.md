@@ -54,7 +54,7 @@ Good search terms for this project: Android voice keyboard, VoiceFlow Keyboard, 
 - Optional transcript cleanup via configurable cloud transform providers.
 - Editable API keys, providers, transcription models, transform models, and voice styles.
 - Combined provider/model pickers for voice input and text transform setup.
-- Voice styles: Friends and Work by default, optional Family and Partner templates, and editable custom styles.
+- Voice styles: Friends and Work by default, optional Family and Partner templates, editable custom styles, and optional emoji icons for quick recognition.
 - A mutually exclusive style picker replaces the disabled keys while dictation or translation is recording.
 - A five-step expression control (`Reserved` through `Expressive`) adjusts conversational energy, punctuation, and permitted emoji use independently for each voice style.
 - Voice styles apply to both transcript cleanup and natural target-language localization; voice instruction mode remains independent.

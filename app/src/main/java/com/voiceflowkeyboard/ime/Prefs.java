@@ -319,6 +319,10 @@ final class Prefs {
         return defaultLabelForPreset(sanitized);
     }
 
+    static String displayLabelForPreset(Context context, String preset) {
+        return promptProfile(context, preset).displayName();
+    }
+
     static String[] selectablePresetValues(Context context) {
         List<PromptProfile> profiles = promptProfiles(context);
         String[] values = new String[profiles.size()];
@@ -331,7 +335,7 @@ final class Prefs {
     static String[] labelsForPresets(Context context, String[] presets) {
         String[] labels = new String[presets.length];
         for (int i = 0; i < presets.length; i++) {
-            labels[i] = labelForPreset(context, presets[i]);
+            labels[i] = displayLabelForPreset(context, presets[i]);
         }
         return labels;
     }
@@ -339,8 +343,8 @@ final class Prefs {
     static List<PromptProfile> promptProfiles(Context context) {
         List<PromptProfile> profiles = readPromptProfiles(context);
         if (profiles.isEmpty()) {
-            profiles.add(new PromptProfile(PRESET_CASUAL, "Friends"));
-            profiles.add(new PromptProfile(PRESET_BUSINESS, "Work"));
+            profiles.add(defaultPromptProfile(PRESET_CASUAL));
+            profiles.add(defaultPromptProfile(PRESET_BUSINESS));
         }
         return profiles;
     }
@@ -352,17 +356,17 @@ final class Prefs {
                 return profile;
             }
         }
-        return new PromptProfile(PRESET_CASUAL, "Friends");
+        return defaultPromptProfile(PRESET_CASUAL);
     }
 
     static List<PromptProfile> hiddenVoiceStyleTemplates(Context context) {
         List<PromptProfile> active = promptProfiles(context);
         List<PromptProfile> hidden = new ArrayList<>();
         if (!containsProfile(active, PRESET_FAMILY)) {
-            hidden.add(new PromptProfile(PRESET_FAMILY, "Family"));
+            hidden.add(defaultPromptProfile(PRESET_FAMILY));
         }
         if (!containsProfile(active, PRESET_PARTNER)) {
-            hidden.add(new PromptProfile(PRESET_PARTNER, "Partner"));
+            hidden.add(defaultPromptProfile(PRESET_PARTNER));
         }
         return hidden;
     }
@@ -374,7 +378,7 @@ final class Prefs {
         }
         List<PromptProfile> profiles = promptProfiles(context);
         if (!containsProfile(profiles, sanitized)) {
-            profiles.add(new PromptProfile(sanitized, defaultLabelForPreset(sanitized)));
+            profiles.add(defaultPromptProfile(sanitized));
             writePromptProfiles(context, profiles);
         }
     }
@@ -386,19 +390,30 @@ final class Prefs {
         }
         String id = "custom_" + UUID.randomUUID().toString().replace("-", "");
         List<PromptProfile> profiles = promptProfiles(context);
-        profiles.add(new PromptProfile(id, trimmed));
+        profiles.add(new PromptProfile(id, trimmed, defaultIconForPreset(id)));
         writePromptProfiles(context, profiles);
         shared(context).edit().putString(KEY_PROMPT_PREFIX + id, customPrompt()).apply();
         return id;
     }
 
-    static void savePromptProfile(Context context, String id, String name, String prompt, String styleGuidance) {
+    static void savePromptProfile(
+            Context context,
+            String id,
+            String name,
+            String icon,
+            String prompt,
+            String styleGuidance
+    ) {
         String sanitized = sanitizeEditablePreset(id);
         List<PromptProfile> profiles = promptProfiles(context);
         for (int i = 0; i < profiles.size(); i++) {
             if (profiles.get(i).id.equals(sanitized)) {
                 String trimmedName = name == null ? "" : name.trim();
-                profiles.set(i, new PromptProfile(sanitized, trimmedName.isEmpty() ? defaultLabelForPreset(sanitized) : trimmedName));
+                profiles.set(i, new PromptProfile(
+                        sanitized,
+                        trimmedName.isEmpty() ? defaultLabelForPreset(sanitized) : trimmedName,
+                        sanitizeStyleIcon(icon)
+                ));
                 break;
             }
         }
@@ -420,6 +435,15 @@ final class Prefs {
     static boolean isRelationshipStyle(String id) {
         String sanitized = sanitizeEditablePreset(id);
         return PRESET_FAMILY.equals(sanitized) || PRESET_PARTNER.equals(sanitized);
+    }
+
+    static String sanitizeStyleIcon(String icon) {
+        String value = icon == null ? "" : icon.trim().replace("\n", "").replace("\r", "");
+        if (value.length() <= 16) {
+            return value;
+        }
+        int end = value.offsetByCodePoints(0, Math.min(8, value.codePointCount(0, value.length())));
+        return value.substring(0, end);
     }
 
     static boolean canDeletePromptProfile(String id) {
@@ -549,6 +573,30 @@ final class Prefs {
             return "Custom";
         }
         return "Friends";
+    }
+
+    static String defaultIconForPreset(String preset) {
+        if (PRESET_BUSINESS.equals(preset) || PRESET_PROFESSIONAL.equals(preset)) {
+            return "💼";
+        }
+        if (PRESET_FAMILY.equals(preset)) {
+            return "🏠";
+        }
+        if (PRESET_PARTNER.equals(preset)) {
+            return "❤️";
+        }
+        if (preset != null && preset.startsWith("custom_")) {
+            return "✨";
+        }
+        return "🙂";
+    }
+
+    private static PromptProfile defaultPromptProfile(String preset) {
+        return new PromptProfile(
+                preset,
+                defaultLabelForPreset(preset),
+                defaultIconForPreset(preset)
+        );
     }
 
     static String defaultPromptForPreset(String preset) {
@@ -739,6 +787,7 @@ final class Prefs {
                 JSONObject item = array.getJSONObject(i);
                 String id = sanitizeSelectablePreset(item.optString("id", ""));
                 String name = item.optString("name", defaultLabelForPreset(id)).trim();
+                String icon = sanitizeStyleIcon(item.optString("icon", defaultIconForPreset(id)));
                 if (PRESET_BUSINESS.equals(id) && "Business".equals(name)) {
                     name = "Work";
                     changed = true;
@@ -754,7 +803,7 @@ final class Prefs {
                     continue;
                 }
                 if (!name.isEmpty() && !containsProfile(profiles, id)) {
-                    profiles.add(new PromptProfile(id, name));
+                    profiles.add(new PromptProfile(id, name, icon));
                 }
             }
         } catch (JSONException ignored) {
@@ -769,15 +818,15 @@ final class Prefs {
 
     private static List<PromptProfile> migratedPromptProfiles(Context context) {
         List<PromptProfile> profiles = new ArrayList<>();
-        profiles.add(new PromptProfile(PRESET_CASUAL, "Friends"));
-        profiles.add(new PromptProfile(PRESET_BUSINESS, "Work"));
+        profiles.add(defaultPromptProfile(PRESET_CASUAL));
+        profiles.add(defaultPromptProfile(PRESET_BUSINESS));
 
         String[] oldCustomIds = {"custom_1", "custom_2", "custom_3"};
         for (String oldId : oldCustomIds) {
             String label = shared(context).getString(KEY_PRESET_LABEL_PREFIX + oldId, "");
             if (label != null && !label.trim().isEmpty() && !isLegacyDefaultCustom(oldId, label.trim())) {
                 String newId = oldId;
-                profiles.add(new PromptProfile(newId, label.trim()));
+                profiles.add(new PromptProfile(newId, label.trim(), defaultIconForPreset(newId)));
             }
         }
         writePromptProfiles(context, profiles);
@@ -786,11 +835,11 @@ final class Prefs {
 
     private static void ensureDefaultProfiles(List<PromptProfile> profiles) {
         if (!containsProfile(profiles, PRESET_CASUAL)) {
-            profiles.add(0, new PromptProfile(PRESET_CASUAL, "Friends"));
+            profiles.add(0, defaultPromptProfile(PRESET_CASUAL));
         }
         if (!containsProfile(profiles, PRESET_BUSINESS)) {
             int index = Math.min(1, profiles.size());
-            profiles.add(index, new PromptProfile(PRESET_BUSINESS, "Work"));
+            profiles.add(index, defaultPromptProfile(PRESET_BUSINESS));
         }
     }
 
@@ -816,6 +865,7 @@ final class Prefs {
             try {
                 item.put("id", profile.id);
                 item.put("name", profile.name);
+                item.put("icon", profile.icon);
                 array.put(item);
             } catch (JSONException ignored) {
             }
