@@ -134,7 +134,13 @@ public class TranscriptDetailActivity extends Activity {
         back.setOnClickListener(v -> finish());
         bar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView title = Ui.text(this, historyItem.isTranslation() ? "Translation" : "Transcript", 22, true, Ui.TEXT);
+        TextView title = Ui.text(
+                this,
+                historyItem.isTranslation() ? "Translation" : historyItem.isCreation() ? "Creation" : "Transcript",
+                22,
+                true,
+                Ui.TEXT
+        );
         title.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
                 0,
@@ -314,12 +320,16 @@ public class TranscriptDetailActivity extends Activity {
 
     private String labelForVariant(String variant) {
         if (Prefs.PRESET_RAW.equals(variant)) {
-            return historyItem.isTranslation() ? "Original source" : "Original";
+            return historyItem.isTranslation()
+                    ? "Original source"
+                    : historyItem.isCreation() ? "Creation request" : "Original";
         }
         String preset = Prefs.historyVariantPreset(variant);
         int expression = Prefs.historyVariantExpression(variant);
         return Prefs.PRESET_RAW.equals(preset)
-                ? (historyItem.isTranslation() ? "Original source" : "Original")
+                ? (historyItem.isTranslation()
+                        ? "Original source"
+                        : historyItem.isCreation() ? "Creation request" : "Original")
                 : Prefs.labelForPreset(this, preset) + " - " + Prefs.expressionLabel(expression);
     }
 

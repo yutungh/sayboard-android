@@ -87,6 +87,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private HorizontalScrollView chipScroller;
     private TextView statusText;
     private ImageButton translationButton;
+    private ImageButton createButton;
     private ImageButton instructionButton;
     private ImageButton micButton;
     private TextView cancelRecordingButton;
@@ -96,6 +97,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private boolean recording;
     private boolean processing;
     private boolean translationCapture;
+    private boolean creationCapture;
     private boolean instructionCapture;
     private boolean shift;
     private boolean autoShift;
@@ -115,6 +117,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private boolean rootSwipeConsumed;
     private boolean rootSwipeTracking;
     private boolean rootSwipeStartedOnSpace;
+    private boolean rootSwipeStartedOnExpressionSlider;
     private boolean panelAnimating;
     private boolean retoneMode;
     private long deleteHoldStartMs;
@@ -140,8 +143,10 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private Runnable spaceCursorRunnable;
     private Runnable statusSpinnerRunnable;
     private ObjectAnimator translationLoadingAnimator;
+    private ObjectAnimator createLoadingAnimator;
     private ObjectAnimator micLoadingAnimator;
     private ObjectAnimator instructionLoadingAnimator;
+    private SeekBar expressionSlider;
     private Runnable spellCheckRunnable;
     private String statusSpinnerBase = "";
     private String translationTargetLanguage = "";
@@ -264,6 +269,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             rootSwipeConsumed = false;
             rootSwipeTracking = false;
             rootSwipeStartedOnSpace = isRawPointInside(spaceButton, rootDownX, rootDownY);
+            rootSwipeStartedOnExpressionSlider = isRawPointInside(expressionSlider, rootDownX, rootDownY);
             return false;
         }
         if (action == MotionEvent.ACTION_CANCEL) {
@@ -279,7 +285,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             }
             return true;
         }
-        if (rootSwipeStartedOnSpace || (action != MotionEvent.ACTION_MOVE && action != MotionEvent.ACTION_UP)) {
+        if (rootSwipeStartedOnSpace
+                || rootSwipeStartedOnExpressionSlider
+                || (action != MotionEvent.ACTION_MOVE && action != MotionEvent.ACTION_UP)) {
             return false;
         }
         float deltaX = event.getRawX() - rootDownX;
@@ -306,10 +314,6 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                 hideHistoryPanelAnimated();
                 return true;
             }
-            if (!historyMode && deltaX < 0) {
-                showHistoryPanelAnimated();
-                return true;
-            }
         }
         animatePanelReset();
         return true;
@@ -317,18 +321,17 @@ public class VoiceFlowKeyboardService extends InputMethodService {
 
     private boolean canUseRootSwipe(float deltaX) {
         if (recording) {
-            return !translationCapture && !instructionCapture;
+            return !translationCapture && !creationCapture && !instructionCapture;
         }
         if (processing || panelAnimating) {
             return false;
         }
-        return historyMode ? deltaX > 0 : deltaX < 0;
+        return historyMode && deltaX > 0;
     }
 
     private boolean canStartRootSwipe(float deltaX, float deltaY) {
         if (!historyMode && !recording) {
-            return Math.abs(deltaX) > dp(30)
-                    && Math.abs(deltaX) > Math.abs(deltaY) * 1.6f;
+            return false;
         }
         return isHorizontalSwipe(deltaX, deltaY);
     }
@@ -444,6 +447,14 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         } else {
             translationButton = null;
         }
+
+        createLoadingAnimator = null;
+        createButton = createButton();
+        createButton.setOnClickListener(v -> {
+            haptic(v);
+            toggleCreationCapture();
+        });
+        top.addView(createButton);
 
         instructionLoadingAnimator = null;
         instructionButton = instructionButton();
@@ -730,7 +741,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             return "ORIGINAL SHOWN - " + selectedVersion.toUpperCase(Locale.US) + " NOT CREATED";
         }
         if (showingOriginal || Prefs.PRESET_RAW.equals(item.preset)) {
-            return item.isTranslation() ? "ORIGINAL SOURCE" : "ORIGINAL";
+            return item.isTranslation() ? "ORIGINAL SOURCE" : item.isCreation() ? "CREATION REQUEST" : "ORIGINAL";
         }
         return selectedVersion.toUpperCase(Locale.US);
     }
@@ -778,7 +789,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         if (item.isTranslation() && !item.targetLanguage.isEmpty()) {
             return date + " - " + compactLanguageName(item.targetLanguage);
         }
-        return date + " - Dictation";
+        return date + (item.isCreation() ? " - Creation" : " - Dictation");
     }
 
     private TextView historyOutputButton(VoiceHistoryItem item) {
@@ -1226,6 +1237,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         }
 
         SeekBar slider = new SeekBar(this);
+        expressionSlider = slider;
         slider.setMax(Prefs.EXPRESSION_EXPRESSIVE);
         slider.setProgress(selectedExpression);
         slider.setPadding(dp(7), 0, dp(7), 0);
@@ -1279,6 +1291,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         voiceStyleOverlay.setVisibility(View.GONE);
         voiceStyleOverlay.removeAllViews();
         voiceStyleOverlay.setAlpha(1f);
+        expressionSlider = null;
     }
 
     private void showChipStrip() {
@@ -1309,6 +1322,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
     private void setHistoryControlsActive(boolean active) {
         if (translationButton != null) {
             translationButton.setVisibility(active ? View.INVISIBLE : View.VISIBLE);
+        }
+        if (createButton != null) {
+            createButton.setVisibility(active ? View.INVISIBLE : View.VISIBLE);
         }
         if (instructionButton != null) {
             instructionButton.setVisibility(active ? View.INVISIBLE : View.VISIBLE);
@@ -1412,6 +1428,22 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         button.setMinimumWidth(0);
         button.setMinimumHeight(0);
         button.setContentDescription("Voice instruction");
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(38), dp(38));
+        params.setMargins(dp(2), dp(2), dp(2), dp(2));
+        button.setLayoutParams(params);
+        return button;
+    }
+
+    private ImageButton createButton() {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(R.drawable.ic_create_text_24);
+        button.setColorFilter(colors.text);
+        button.setBackground(ovalBackground(colors.key, false));
+        button.setScaleType(ImageButton.ScaleType.CENTER);
+        button.setPadding(dp(8), dp(8), dp(8), dp(8));
+        button.setMinimumWidth(0);
+        button.setMinimumHeight(0);
+        button.setContentDescription("Create and append text");
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(38), dp(38));
         params.setMargins(dp(2), dp(2), dp(2), dp(2));
         button.setLayoutParams(params);
@@ -1743,6 +1775,30 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         return prepared;
     }
 
+    private String appendCreatedText(String text) {
+        InputConnection connection = getCurrentInputConnection();
+        if (connection == null) {
+            return "";
+        }
+        ExtractedText extracted = connection.getExtractedText(new ExtractedTextRequest(), 0);
+        if (extracted != null && extracted.text != null) {
+            int end = Math.max(0, extracted.startOffset + extracted.text.length());
+            if (!connection.setSelection(end, end)) {
+                return "";
+            }
+        } else {
+            CharSequence selected = connection.getSelectedText(0);
+            if (selected != null && selected.length() > 0) {
+                CharSequence before = connection.getTextBeforeCursor(200000, 0);
+                int selectionEnd = (before == null ? 0 : before.length()) + selected.length();
+                if (!connection.setSelection(selectionEnd, selectionEnd)) {
+                    return "";
+                }
+            }
+        }
+        return insertVoiceText(text);
+    }
+
     private void rememberLastVoiceInsertion(
             String rawTranscript,
             String insertedText,
@@ -1767,7 +1823,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         lastVoiceExpression = Prefs.sanitizeExpression(expression);
         lastVoiceOperation = VoiceHistoryItem.OPERATION_TRANSLATION.equals(operation)
                 ? VoiceHistoryItem.OPERATION_TRANSLATION
-                : VoiceHistoryItem.OPERATION_DICTATION;
+                : VoiceHistoryItem.OPERATION_CREATION.equals(operation)
+                        ? VoiceHistoryItem.OPERATION_CREATION
+                        : VoiceHistoryItem.OPERATION_DICTATION;
         lastVoiceTargetLanguage = targetLanguage == null ? "" : targetLanguage;
         lastVoiceHistoryId = historyId;
         lastVoiceSelectionEnd = currentSelectionEnd();
@@ -1829,6 +1887,10 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             translationButton.setEnabled(!active);
             translationButton.setAlpha(active ? 0.45f : 1f);
         }
+        if (createButton != null) {
+            createButton.setEnabled(!active);
+            createButton.setAlpha(active ? 0.45f : 1f);
+        }
         if (instructionButton != null) {
             instructionButton.setEnabled(!active);
             instructionButton.setAlpha(active ? 0.45f : 1f);
@@ -1870,9 +1932,14 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         startStatusSpinner("Retoning: " + labelForPreset(preset) + " - " + Prefs.expressionLabel(expression));
         executor.execute(() -> {
             try {
-                String result = VoiceHistoryItem.OPERATION_TRANSLATION.equals(operation)
-                        ? TransformClient.translate(this, raw, targetLanguage, preset, expression)
-                        : TransformClient.transform(this, raw, preset, expression);
+                String result;
+                if (VoiceHistoryItem.OPERATION_TRANSLATION.equals(operation)) {
+                    result = TransformClient.translate(this, raw, targetLanguage, preset, expression);
+                } else if (VoiceHistoryItem.OPERATION_CREATION.equals(operation)) {
+                    result = TransformClient.createText(this, raw, preset, expression);
+                } else {
+                    result = TransformClient.transform(this, raw, preset, expression);
+                }
                 if (result == null || result.trim().isEmpty()) {
                     throw new IllegalStateException("Retone returned no text.");
                 }
@@ -2021,9 +2088,14 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                 : "Creating " + styleLabel);
         executor.execute(() -> {
             try {
-                String result = item.isTranslation()
-                        ? TransformClient.translate(this, item.rawText, item.targetLanguage, preset, expression)
-                        : TransformClient.transform(this, item.rawText, preset, expression);
+                String result;
+                if (item.isTranslation()) {
+                    result = TransformClient.translate(this, item.rawText, item.targetLanguage, preset, expression);
+                } else if (item.isCreation()) {
+                    result = TransformClient.createText(this, item.rawText, preset, expression);
+                } else {
+                    result = TransformClient.transform(this, item.rawText, preset, expression);
+                }
                 mainHandler.post(() -> {
                     Prefs.updateTranscriptHistory(this, item.id, item.rawText, result, preset, expression);
                     stopStatusSpinner();
@@ -2780,10 +2852,12 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             return;
         }
         if (recording) {
-            if (translationCapture || instructionCapture) {
+            if (translationCapture || creationCapture || instructionCapture) {
                 setStatus(translationCapture
                         ? "Tap the translate button to finish"
-                        : "Tap the instruction button to finish");
+                        : creationCapture
+                                ? "Tap the create button to finish"
+                                : "Tap the instruction button to finish");
                 return;
             }
             if (offlineRecordingSession) {
@@ -2810,12 +2884,58 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         }
     }
 
+    private void toggleCreationCapture() {
+        if (processing) {
+            return;
+        }
+        if (recording) {
+            if (!creationCapture || translationCapture || instructionCapture) {
+                setStatus("Finish or cancel the current recording first");
+                return;
+            }
+            if (offlineRecordingSession) {
+                stopOfflineRecordingAndTranscribe();
+            } else {
+                stopCloudRecordingAndTranscribe();
+            }
+            return;
+        }
+        if (!shouldAllowVoiceCapture()) {
+            setStatus("Voice disabled in password fields");
+            return;
+        }
+        if (!hasNetworkConnectivity()) {
+            setStatus("Text creation requires a connection");
+            return;
+        }
+        String transformProvider = Prefs.transformProvider(this);
+        if (!Prefs.hasApiKeyForProvider(this, transformProvider)) {
+            setStatus("Add a " + Prefs.providerLabel(transformProvider) + " key for text creation");
+            return;
+        }
+        if (historyMode) {
+            hideHistoryPanel();
+        }
+        creationCapture = true;
+        String provider = Prefs.transcriptionProvider(this);
+        if (isOfflineTranscriptionProvider(provider)) {
+            toggleOfflineRecording(provider);
+        } else {
+            toggleCloudRecording();
+        }
+        if (!recording && !processing) {
+            creationCapture = false;
+            setCreateVisual(false, true);
+            setMicVisual(false, true);
+        }
+    }
+
     private void toggleInstructionCapture() {
         if (processing) {
             return;
         }
         if (recording) {
-            if (!instructionCapture || translationCapture) {
+            if (!instructionCapture || translationCapture || creationCapture) {
                 setStatus("Finish or cancel the current recording first");
                 return;
             }
@@ -3013,9 +3133,12 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         processing = true;
         setKeyboardLocked(true);
         showCaptureProcessingState();
-        startStatusSpinner(instructionCapture ? "Transcribing instruction" : translationCapture ? "Transcribing for translation" : "Transcribing");
+        startStatusSpinner(creationCapture
+                ? "Transcribing creation request"
+                : instructionCapture ? "Transcribing instruction" : translationCapture ? "Transcribing for translation" : "Transcribing");
         String presetForThisRecording = selectedPreset;
         int expressionForThisRecording = selectedExpression;
+        boolean creationForThisRecording = creationCapture;
         boolean instructionForThisRecording = instructionCapture;
         String sourceForThisInstruction = instructionSourceText;
         boolean translationForThisRecording = translationCapture;
@@ -3027,6 +3150,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                         transcript,
                         presetForThisRecording,
                         expressionForThisRecording,
+                        creationForThisRecording,
                         instructionForThisRecording,
                         sourceForThisInstruction,
                         translationForThisRecording,
@@ -3158,10 +3282,13 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         processing = true;
         setKeyboardLocked(true);
         showCaptureProcessingState();
-        startStatusSpinner(instructionCapture ? "Transcribing instruction" : translationCapture ? "Transcribing for translation" : "Transcribing");
+        startStatusSpinner(creationCapture
+                ? "Transcribing creation request"
+                : instructionCapture ? "Transcribing instruction" : translationCapture ? "Transcribing for translation" : "Transcribing");
         String presetForThisRecording = selectedPreset;
         int expressionForThisRecording = selectedExpression;
         String providerForThisRecording = offlineRecordingProvider;
+        boolean creationForThisRecording = creationCapture;
         boolean instructionForThisRecording = instructionCapture;
         String sourceForThisInstruction = instructionSourceText;
         boolean translationForThisRecording = translationCapture;
@@ -3173,6 +3300,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                         transcript,
                         presetForThisRecording,
                         expressionForThisRecording,
+                        creationForThisRecording,
                         instructionForThisRecording,
                         sourceForThisInstruction,
                         translationForThisRecording,
@@ -3192,6 +3320,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             String transcript,
             String preset,
             int expression,
+            boolean creation,
             boolean instruction,
             String instructionSource,
             boolean translation,
@@ -3225,6 +3354,40 @@ public class VoiceFlowKeyboardService extends InputMethodService {
                         historyId
                 );
                 finishProcessingState("Translated - " + labelForPreset(preset));
+            });
+            return;
+        }
+        if (creation) {
+            postStatusSpinner("Creating text");
+            String result = TransformClient.createText(this, transcript, preset, expression);
+            if (result == null || result.trim().isEmpty()) {
+                throw new IllegalStateException("Text creation returned no text.");
+            }
+            mainHandler.post(() -> {
+                String historyId = Prefs.addTranscriptHistory(
+                        this,
+                        transcript,
+                        result,
+                        preset,
+                        expression,
+                        VoiceHistoryItem.OPERATION_CREATION,
+                        ""
+                );
+                String inserted = appendCreatedText(result);
+                if (inserted.isEmpty()) {
+                    finishProcessingState("Could not append created text");
+                    return;
+                }
+                rememberLastVoiceInsertion(
+                        transcript,
+                        inserted,
+                        preset,
+                        expression,
+                        VoiceHistoryItem.OPERATION_CREATION,
+                        "",
+                        historyId
+                );
+                finishProcessingState("Created and appended");
             });
             return;
         }
@@ -3360,6 +3523,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         retoneMode = false;
         translationCapture = false;
         translationTargetLanguage = "";
+        creationCapture = false;
         instructionCapture = false;
         instructionSourceText = "";
         stopDeleteHold();
@@ -3368,6 +3532,9 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         setRetoneTopControls(false);
         if (translationButton != null) {
             setTranslationVisual(false, true);
+        }
+        if (createButton != null) {
+            setCreateVisual(false, true);
         }
         if (instructionButton != null) {
             setInstructionVisual(false, true);
@@ -3467,6 +3634,8 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         hideChipStrip();
         if (translationCapture) {
             startTranslationLoading();
+        } else if (creationCapture) {
+            startCreateLoading();
         } else if (instructionCapture) {
             startInstructionLoading();
         } else {
@@ -3498,6 +3667,7 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             mainHandler.removeCallbacks(statusSpinnerRunnable);
         }
         stopMicLoading();
+        stopCreateLoading();
         stopInstructionLoading();
         stopTranslationLoading();
     }
@@ -3561,6 +3731,37 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         if (instructionButton != null) {
             instructionButton.setRotation(0f);
             instructionButton.setImageResource(R.drawable.ic_wand_24);
+        }
+    }
+
+    private void startCreateLoading() {
+        if (createButton == null) {
+            return;
+        }
+        createButton.setVisibility(View.VISIBLE);
+        createButton.setEnabled(false);
+        createButton.setImageResource(R.drawable.ic_loading_24);
+        createButton.setColorFilter(colors.text);
+        createButton.setBackground(ovalBackground(colors.key, false));
+        createButton.setAlpha(1f);
+        if (createLoadingAnimator == null) {
+            createLoadingAnimator = ObjectAnimator.ofFloat(createButton, View.ROTATION, 0f, 360f);
+            createLoadingAnimator.setDuration(850);
+            createLoadingAnimator.setInterpolator(new LinearInterpolator());
+            createLoadingAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        }
+        if (!createLoadingAnimator.isStarted()) {
+            createLoadingAnimator.start();
+        }
+    }
+
+    private void stopCreateLoading() {
+        if (createLoadingAnimator != null) {
+            createLoadingAnimator.cancel();
+        }
+        if (createButton != null) {
+            createButton.setRotation(0f);
+            createButton.setImageResource(R.drawable.ic_create_text_24);
         }
     }
 
@@ -3671,6 +3872,20 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         updateRecordingControls();
     }
 
+    private void setCreateVisual(boolean active, boolean enabled) {
+        if (createButton == null) {
+            return;
+        }
+        if (!processing) {
+            createButton.setImageResource(R.drawable.ic_create_text_24);
+        }
+        createButton.setEnabled(enabled);
+        createButton.setColorFilter(active ? colors.onDanger : colors.text);
+        createButton.setBackground(ovalBackground(active ? colors.danger : colors.key, active));
+        createButton.setAlpha(enabled ? 1f : 0.55f);
+        updateRecordingControls();
+    }
+
     private void setTranslationVisual(boolean active, boolean enabled) {
         if (translationButton == null) {
             return;
@@ -3689,10 +3904,21 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         if (translationCapture) {
             hideChipStrip();
             setMicVisual(false, false);
+            setCreateVisual(false, false);
             setInstructionVisual(false, false);
             setTranslationVisual(true, true);
             showVoiceStyleOverlay();
             setStatus(captureStyleStatus("Recording"));
+            return;
+        }
+        if (creationCapture) {
+            hideChipStrip();
+            setMicVisual(false, false);
+            setTranslationVisual(false, false);
+            setInstructionVisual(false, false);
+            setCreateVisual(true, true);
+            showVoiceStyleOverlay();
+            setStatus(captureStyleStatus("Creating"));
             return;
         }
         if (instructionCapture) {
@@ -3700,11 +3926,13 @@ public class VoiceFlowKeyboardService extends InputMethodService {
             hideVoiceStyleOverlay();
             setMicVisual(false, false);
             setTranslationVisual(false, false);
+            setCreateVisual(false, false);
             setInstructionVisual(true, true);
             setStatus("Recording instruction");
             return;
         }
         setTranslationVisual(false, false);
+        setCreateVisual(false, false);
         setInstructionVisual(false, false);
         setMicVisual(true, true);
         hideChipStrip();
@@ -3716,17 +3944,27 @@ public class VoiceFlowKeyboardService extends InputMethodService {
         hideVoiceStyleOverlay();
         if (translationCapture) {
             setMicVisual(false, false);
+            setCreateVisual(false, false);
             setInstructionVisual(false, false);
             setTranslationVisual(true, false);
+            return;
+        }
+        if (creationCapture) {
+            setMicVisual(false, false);
+            setTranslationVisual(false, false);
+            setInstructionVisual(false, false);
+            setCreateVisual(true, false);
             return;
         }
         if (instructionCapture) {
             setMicVisual(false, false);
             setTranslationVisual(false, false);
+            setCreateVisual(false, false);
             setInstructionVisual(true, false);
             return;
         }
         setTranslationVisual(false, false);
+        setCreateVisual(false, false);
         setInstructionVisual(false, false);
         setMicVisual(true, false);
     }

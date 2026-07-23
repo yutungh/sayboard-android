@@ -5,6 +5,7 @@ import java.util.Map;
 
 final class VoiceHistoryItem {
     static final String OPERATION_DICTATION = "dictation";
+    static final String OPERATION_CREATION = "creation";
     static final String OPERATION_TRANSLATION = "translation";
 
     final String id;
@@ -51,7 +52,9 @@ final class VoiceHistoryItem {
         this.rawText = rawText == null ? "" : rawText;
         this.preset = preset == null ? Prefs.PRESET_RAW : preset;
         this.expression = Prefs.sanitizeExpression(expression);
-        this.operation = OPERATION_TRANSLATION.equals(operation) ? OPERATION_TRANSLATION : OPERATION_DICTATION;
+        this.operation = OPERATION_TRANSLATION.equals(operation)
+                ? OPERATION_TRANSLATION
+                : OPERATION_CREATION.equals(operation) ? OPERATION_CREATION : OPERATION_DICTATION;
         this.targetLanguage = targetLanguage == null ? "" : targetLanguage.trim();
         this.outputs = new HashMap<>();
         if (outputs != null) {
@@ -79,6 +82,10 @@ final class VoiceHistoryItem {
 
     boolean isTranslation() {
         return OPERATION_TRANSLATION.equals(operation);
+    }
+
+    boolean isCreation() {
+        return OPERATION_CREATION.equals(operation);
     }
 
     boolean hasOutputForPreset(String preset) {

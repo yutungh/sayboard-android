@@ -254,13 +254,13 @@ final class Prefs {
                 base = "Keep the delivery low-key and lightly conversational. Do not add emojis or extra enthusiasm.";
                 break;
             case EXPRESSION_LIVELY:
-                base = "Make the delivery animated and conversational with natural punctuation. You may add one fitting emoji only when the message already supports that emotion.";
+                base = "Make the delivery animated and conversational with natural expressive punctuation, including an occasional exclamation mark when the message supports enthusiasm. You may add one fitting emoji only when the message already supports that emotion.";
                 break;
             case EXPRESSION_EXPRESSIVE:
-                base = "Use energetic, playful delivery and expressive punctuation when the message supports it. You may add up to two fitting emojis, but never manufacture affection, excitement, or sentiment.";
+                base = "Use energetic, playful delivery and expressive punctuation, including exclamation marks when the message supports them. You may add up to two fitting emojis, but never manufacture affection, excitement, or sentiment.";
                 break;
             default:
-                base = "Match the speaker's natural conversational energy. Add at most one fitting emoji only when the selected voice style permits it and the message clearly supports it.";
+                base = "Match the speaker's natural conversational energy and punctuation, including a single exclamation mark when the meaning clearly supports enthusiasm. Add at most one fitting emoji only when the selected voice style permits it and the message clearly supports it.";
                 break;
         }
         if (PRESET_PARTNER.equals(sanitizedPreset) && sanitizedExpression == EXPRESSION_EXPRESSIVE) {
@@ -272,7 +272,7 @@ final class Prefs {
             base += " For an affectionate spouse message, favor warm partner-text energy and one natural heart or affectionate marker when it fits.";
         }
         if (PRESET_BUSINESS.equals(sanitizedPreset)) {
-            base += " Because this is the Work style, do not add emojis or exaggerated punctuation at any expression level.";
+            base += " Because this is the Work style, do not add emojis or repeated or exaggerated punctuation. A single professional exclamation mark is welcome when the message supports enthusiasm, thanks, congratulations, encouragement, or a friendly greeting.";
         }
         return base + " This setting controls presentation only: never change facts, intent, certainty, sentiment, relationship, or the speaker's underlying emotion.";
     }
